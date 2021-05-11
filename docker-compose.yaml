@@ -1,0 +1,18 @@
+version: '3.6'
+services:
+  postgres:
+    restart: always
+    build:
+      context: .
+      dockerfile: _dev/postgres.Dockerfile
+    environment:
+      - SQITCH_PAGER
+    volumes:
+      - .:/repo
+      - ~/.sqitch:/root/.sqitch
+      - ~/.gitconfig:/root/.gitconfig
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+volumes:
+  db_data:
