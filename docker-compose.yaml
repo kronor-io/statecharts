@@ -11,8 +11,5 @@ services:
       - .:/repo
       - ~/.sqitch:/root/.sqitch
       - ~/.gitconfig:/root/.gitconfig
-      - db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-volumes:
-  db_data:

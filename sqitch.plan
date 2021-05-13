@@ -1,3 +1,8 @@
 %syntax-version=1.0.0
 %project=statecharts
 
+fsm_schema 2021-05-11T08:31:18Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # Add schema for the finite state machine
+statechart_tables 2021-05-11T08:44:08Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # Add tables to store the statechart definitions
+function/get_initial_state 2021-05-12T11:27:43Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add a function to return the global initial state of a statechart
+trigger/check_valid_initial_state 2021-05-12T08:04:51Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add a trigger function to check that initial state definition is valid
+trigger/check_no_state_loops 2021-05-12T15:57:16Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add a trigger to check that there are no loops in states
