@@ -7,7 +7,6 @@ BEGIN;
 
   select * from fsm.statechart;
   select * from fsm.state;
-  select * from fsm.compound_state;
   select * from fsm.transition;
 
 ROLLBACK;

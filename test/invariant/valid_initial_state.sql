@@ -1,54 +1,37 @@
 BEGIN;
-  select plan(9);
+  select plan(8);
 
   insert into fsm.statechart (id, name, version)
   values (9000000000,'test', 1::semver);
 
   prepare insert_state as
-  insert into fsm.state (statechart_id, id, name, is_initial, is_final)
-  values (9000000000, $1, $1, $2, false);
-
-  prepare insert_compound as
-  insert into fsm.compound_state (statechart_id, parent_state, child_state)
-  values (9000000000, $1, $2);
+  insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final)
+  values (9000000000, $1, $1, $2, $3, false);
 
   set constraints all immediate;
 
   select lives_ok(
-    $$execute insert_state('my_initial', true)$$,
+    $$execute insert_state('my_initial', null, true)$$,
     'inserting an initial should work'
   );
 
   select throws_like(
-    $$execute insert_state('another_initial', true)$$,
+    $$execute insert_state('another_initial', null, true)$$,
     'exactly one initial state is required per statechart',
     'initial states should be globally unique'
   );
 
   select lives_ok(
-    $$execute insert_state('second', false)$$,
-    'inserting a non-initial state should work'
+    $$execute insert_state('second', 'my_initial', true)$$,
+    'inserting an initial state for a compound should work'
   );
 
-  -- now insert some nested states, notices that in compound states,
-  -- many children can be the initial state at the same time. That is
-  -- the case for parallel states. We need to defer the constraints again
-  -- so we can insert in the two tables without an error.
-  set constraints all deferred;
+  execute insert_state('third'   , 'second' , true);
+  execute insert_state('fourth'  , 'second' , true);
+  execute insert_state('another' , 'fourth' , false);
 
-  execute insert_state('third', true);
-  execute insert_state('fourth', true);
-  execute insert_state('another', false);
-  execute insert_compound('my_initial', 'second');
-  execute insert_compound('second', 'third');
-  execute insert_compound('second', 'fourth');
-  execute insert_compound('fourth', 'another');
-
-  -- now let's trigger the check again by inserting a new state and make sure
-  -- that we are still in a consistent state
-  set constraints all immediate;
   select lives_ok(
-    $$execute insert_state('fifth', false)$$,
+    $$execute insert_state('fifth', null, false)$$,
     'check again that we are in a consistent state'
   );
 
@@ -59,7 +42,7 @@ BEGIN;
   );
 
   select lives_ok(
-    $$delete from fsm.state where id = 'fifth' and statechart_id = 9000000000$$,
+    $$delete from fsm.state where id = 'fifth' and statechart_id = 9000000000$$ ,
     'deleting non-initial states is ok'
   );
 
@@ -70,13 +53,7 @@ BEGIN;
   );
 
   select throws_like(
-    $$execute insert_compound('another', 'my_initial')$$,
-    'exactly one initial state is required per statechart',
-    'check when the global initial is made a child state'
-  );
-
-  select throws_like(
-    $$update fsm.compound_state set child_state = 'my_initial' where parent_state = 'fourth'$$,
+    $$update fsm.state set parent_id = 'another' where id = 'my_initial' and statechart_id = 9000000000$$,
     'exactly one initial state is required per statechart',
     'check when the global initial is made a child state'
   );
