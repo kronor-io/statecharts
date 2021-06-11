@@ -1,5 +1,5 @@
 BEGIN;
-  select no_plan();
+  select plan(10);
 
   insert into fsm.statechart (id, name, version) values (9000000001,'search', 1::semver);
 

@@ -1,0 +1,7 @@
+- pattern: test/.*\.sql\.pg
+  commands:
+    - docker compose exec postgres pg_prove \0
+
+- pattern: deploy/.*\.sql
+  commands:
+    - docker compose exec postgres sqitch rebase -y

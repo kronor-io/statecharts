@@ -1,13 +1,11 @@
-FROM sqitch/sqitch as sqitch
-
 FROM postgres:13
 
-RUN mkdir -p /usr/share/man/man1 /usr/share/man/man7 \
-    && apt-get -qq update \
+RUN apt-get -qq update \
     && apt-get -qq --no-install-recommends install less libperl5.28 perl-doc nano ca-certificates git \
        libpq5 postgresql-client \
        libtap-parser-sourcehandler-pgtap-perl postgresql-13-pgtap \
        pgxnclient build-essential postgresql-server-dev-13 \
+       sqitch \
     && apt-cache pkgnames | grep libmagic | xargs apt-get purge -qq \
     && apt-get clean \
     # Let libcurl find certs. https://stackoverflow.com/q/3160909/79202
@@ -15,10 +13,6 @@ RUN mkdir -p /usr/share/man/man1 /usr/share/man/man7 \
     && rm -rf /var/cache/apt/* /var/lib/apt/lists/*
 
 RUN pgxn install semver
-
-COPY --from=sqitch /lib/perl5 /lib/perl5
-COPY --from=sqitch /bin/sqitch /bin/sqitch
-COPY --from=sqitch /etc/sqitch /etc/sqitch/
 
 COPY _dev/init-extensions.sh /docker-entrypoint-initdb.d/init-extensions.sh
 

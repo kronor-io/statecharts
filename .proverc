@@ -2,4 +2,3 @@
 -U statecharts
 -h localhost
 -r
---ext .sql
