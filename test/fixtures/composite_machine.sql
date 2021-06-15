@@ -17,8 +17,8 @@
     (9000000001    , 'displaying' , 'Displaying Results' , null      , false      , false);
 
   insert into fsm.transition
-    (statechart_id , event               , source_state      , target_state) values
-    (9000000001    , 'search'            , 'initial'         , 'searching')         ,
-    (9000000001    , 'google_results'    , 'checking_google' , 'got_google')        ,
-    (9000000001    , 'bing_results'      , 'checking_bing'   , 'got_bing')          ,
-    (9000000001    , 'done.state.search' , 'searching'       , 'displaying');
+    (statechart_id , event                  , source_state      , target_state) values
+    (9000000001    , 'search'               , 'initial'         , 'searching')         ,
+    (9000000001    , 'google_results'       , 'checking_google' , 'got_google')        ,
+    (9000000001    , 'bing_results'         , 'checking_bing'   , 'got_bing')          ,
+    (9000000001    , 'done.state.searching' , 'searching'       , 'displaying');

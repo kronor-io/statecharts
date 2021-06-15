@@ -2,6 +2,16 @@
 
 BEGIN;
 
+  drop type if exists fsm_event_payload restrict;
+  create type fsm_event_payload as (
+    machine_id bigint
+  , event_name text
+  , data jsonb
+  , from_state text
+  , to_state text
+  , payload_type text
+  );
+
   create or replace function fsm.handle_machine_events(machine_id bigint)
     returns void as
   $$
@@ -72,16 +82,18 @@ BEGIN;
             on  target.statechart_id = transition.statechart_id
             and target.id = transition.target_state
 
-          -- we need to get all the sub-tree for the source state we are transitioning
+          -- we need to get the entire sub-tree for the source state we are transitioning
           -- from, so that we can call all of the on_exit callbacks.
           join lateral (
             select jsonb_agg(st) as states from
             ( select state_child.*
               from fsm.state state_child
               -- we only want child states that are currently activated in the state machine
-              -- so, we filter by `exited_at is null`
+              -- so, we filter by `exited_at is null` and correlate to the current
+              -- state_child we are inspecting
               join fsm.state_machine_state as current_children_state
                 on  current_children_state.state_machine_id = machine_id
+                and current_children_state.state_id = state_child.id
                 and current_children_state.exited_at is null
               where state_child.statechart_id = current_state.statechart_id
                 and state_child.parent_path <@ (source.parent_path || source.id)
@@ -126,11 +138,21 @@ BEGIN;
                 set exited_at = now()
                 where state_machine_id = machine_id
                   and state_id in (select a.id from all_states a)
+                  and exited_at is null
               )
 
             select * from all_states where on_exit is not null
           loop
-            execute format('select %I()', a_source_state.on_exit);
+            execute format('select %I(%L::fsm_event_payload)',
+                a_source_state.on_exit
+              , ( machine_id
+                , handled.name
+                , handled.data
+                , a_source_state.id
+                , state_transition.target_state->>'id'
+                , 'on_exit'
+                )::fsm_event_payload
+              );
           end loop;
           -- source-exiting}}}
 
@@ -160,7 +182,16 @@ BEGIN;
 
             select * from all_states where on_entry is not null
           loop
-            execute format('select %I()', a_target_state.on_entry);
+            execute format('select %I(%L::fsm_event_payload)',
+                a_target_state.on_entry
+              , ( machine_id
+                , handled.name
+                , handled.data
+                , state_transition.source_state->>'id'
+                , a_target_state.id
+                , 'on_entry'
+                )::fsm_event_payload
+            );
           end loop;
           -- target-entering}}}
 
