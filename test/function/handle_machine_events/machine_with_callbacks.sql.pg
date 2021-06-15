@@ -12,7 +12,7 @@ BEGIN;
   );
 
   -- will be used as the callback for all states as the witness that they are called
-  create or replace function log_callback_execution(payload fsm_event_payload)
+  create or replace function pg_temp.log_callback_execution(payload fsm_event_payload)
     returns void as
     $$
         insert into callbacks_called
@@ -29,8 +29,8 @@ BEGIN;
   \i test/fixtures/composite_machine.sql
 
   update fsm.state set
-      on_entry = 'log_callback_execution'
-    , on_exit = 'log_callback_execution'
+      on_entry = ('pg_temp', 'log_callback_execution')
+    , on_exit = ('pg_temp', 'log_callback_execution')
   where statechart_id = 9000000001;
 
   -- creating a new machine should be a function
@@ -156,6 +156,12 @@ BEGIN;
       is(to_state, 'got_bing', 'the from state should be got_bing')
   from callbacks_called
   where id = 80000000000 and event = 'bing_results';
+
+
+
+
+
+
 
   -- clean the table to make the rest of the tests easier
   delete from callbacks_called;

@@ -14,6 +14,11 @@ CREATE TABLE fsm.statechart (
 
 CREATE UNIQUE INDEX idx_unique_name_version ON fsm.statechart(name, version);
 
+CREATE TYPE fsm_callback_name AS (
+  schema_name name,
+  function_name name
+);
+
 CREATE TABLE fsm.state (
   statechart_id bigint NOT NULL,
   is_initial bool NOT NULL,
@@ -23,8 +28,8 @@ CREATE TABLE fsm.state (
   parent_path ltree NOT NULL,
   node_path ltree NOT NULL,
   parent_id text,
-  on_entry text,
-  on_exit text,
+  on_entry fsm_callback_name,
+  on_exit fsm_callback_name,
   PRIMARY KEY (statechart_id, id),
 
   CONSTRAINT id_must_be_within_bounds
@@ -52,17 +57,11 @@ CREATE UNIQUE INDEX final_state_should_be_unique ON fsm.state(statechart_id, par
 CREATE INDEX idx_parent_path ON fsm.state USING GIST (parent_path) INCLUDE (statechart_id);
 CREATE INDEX idx_node_path ON fsm.state USING GIST (node_path) INCLUDE (statechart_id);
 
-CREATE TYPE transition_scope AS ENUM (
-  'internal',
-  'external'
-);
-
 CREATE TABLE fsm.transition (
   statechart_id bigint NOT NULL,
   event text NOT NULL,
   source_state text NOT NULL,
   target_state text NOT NULL,
-  scope transition_scope NOT NULL DEFAULT 'external',
   PRIMARY KEY (statechart_id, event, source_state),
 
   CONSTRAINT event_must_be_within_bounds

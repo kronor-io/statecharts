@@ -3,8 +3,8 @@
 BEGIN;
 
 DROP TABLE fsm.transition;
-DROP TYPE transition_scope;
 DROP TABLE fsm.state;
 DROP TABLE fsm.statechart;
+DROP TYPE fsm_callback_name;
 
 COMMIT;

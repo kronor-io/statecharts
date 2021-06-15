@@ -143,8 +143,9 @@ BEGIN;
 
             select * from all_states where on_exit is not null
           loop
-            execute format('select %I(%L::fsm_event_payload)',
-                a_source_state.on_exit
+            execute format('select %I.%I(%L::fsm_event_payload)',
+                coalesce((a_source_state.on_exit).schema_name, 'public')
+              , (a_source_state.on_exit).function_name
               , ( machine_id
                 , handled.name
                 , handled.data
@@ -182,8 +183,9 @@ BEGIN;
 
             select * from all_states where on_entry is not null
           loop
-            execute format('select %I(%L::fsm_event_payload)',
-                a_target_state.on_entry
+            execute format('select %I.%I(%L::fsm_event_payload)',
+                coalesce((a_target_state.on_entry).schema_name, 'public')
+              , (a_target_state.on_exit).function_name
               , ( machine_id
                 , handled.name
                 , handled.data
