@@ -20,7 +20,7 @@ BEGIN;
 
   select throws_like(
     $$ execute insert_transition('error', 'searching', 'errored') $$,
-    '%used for a child or parent state transition%',
+    '%Cannot use the same event name for multiple transations in the same tree%',
     'using the same event in a parent transition should be an error'
   );
 
@@ -35,7 +35,7 @@ BEGIN;
 
   select throws_like(
     $$ execute insert_transition('error', 'checking_bing', 'errored') $$,
-    '%used for a child or parent state transition%',
+    '%Cannot use the same event name for multiple transations in the same tree%',
     'using the same event in a child transition should be an error'
   );
 

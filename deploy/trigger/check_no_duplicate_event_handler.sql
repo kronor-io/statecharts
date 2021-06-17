@@ -5,11 +5,15 @@ BEGIN;
   create or replace function fsm.trig_check_no_duplicate_event_handler() returns trigger as
   $$
     declare
-        total_occurrences int;
+        duplicate_transitions jsonb;
     begin
+      with changed_event as (
+        select distinct statechart_id, event
+        from changed
+      )
       -- look at the entire tree to see if the same event name is used
       -- for a transition
-      select count(*) into total_occurrences
+      select jsonb_agg(t.*) into duplicate_transitions
       from fsm.transition t
       -- need to get the source state info for the transition
       -- specifically, we need to get its node_path
@@ -25,17 +29,18 @@ BEGIN;
         and relative.id <> s.id
       join fsm.transition ct
         on  ct.statechart_id = relative.statechart_id
-        and ct.event = coalesce(NEW.event, OLD.event)
         and ct.source_state = relative.id
-      where t.statechart_id = coalesce(NEW.statechart_id, OLD.statechart_id)
-        and t.event = coalesce(NEW.event, OLD.event);
+      join changed_event ce
+        on  ce.statechart_id = ct.statechart_id
+        and ce.event = ct.event
+        and ce.statechart_id = t.statechart_id
+        and ce.event = t.event;
 
-      if total_occurrences > 0
+      if jsonb_array_length(duplicate_transitions) > 0
       then
         raise exception $m$
-        "%" cannot be used as a transition here.
-        It is already used for a child or parent state transition
-        $m$, coalesce(NEW.event, OLD.event);
+        Cannot use the same event name for multiple transations in the same tree: %
+        $m$, jsonb_pretty(duplicate_transitions);
       end if;
 
       return null;
@@ -43,13 +48,22 @@ BEGIN;
   $$ language plpgsql;
 
   set client_min_messages TO warning;
-  drop trigger if exists check_no_duplicate_event_handler on fsm.transition;
+  drop trigger if exists check_no_duplicate_event_handler_insert on fsm.transition;
+  drop trigger if exists check_no_duplicate_event_handler_update on fsm.transition;
   reset client_min_messages;
 
-  create constraint trigger check_no_duplicate_event_handler
-  after insert or update
+  create trigger check_no_duplicate_event_handler_insert
+  after insert
   on fsm.transition
-  for each row
+  referencing new table as changed
+  for each statement
+  execute function fsm.trig_check_no_duplicate_event_handler();
+
+  create trigger check_no_duplicate_event_handler_update
+  after update
+  on fsm.transition
+  referencing new table as changed
+  for each statement
   execute function fsm.trig_check_no_duplicate_event_handler();
 
 COMMIT;

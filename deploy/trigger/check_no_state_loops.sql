@@ -8,21 +8,28 @@ BEGIN;
   declare the_cycle text[];
   begin
 
-    with recursive prev as (
-      select cs.id, array[id] as seen, false as cycle
+    with recursive chart as (
+      select distinct statechart_id
+      from changed
+    )
+    , prev as (
+      select cs.statechart_id, cs.id, array[id] as seen, false as cycle
       from fsm.state cs
-      where cs.statechart_id = coalesce(NEW.statechart_id, OLD.statechart_id)
-        and parent_id is null
+      join chart
+        on  chart.statechart_id = cs.statechart_id
+      where parent_id is null
 
       union all
 
-      select cs.id, seen || cs.id as seen,
+      select cs.statechart_id, cs.id, seen || cs.id as seen,
           cs.id = any(seen) as cycle
       from prev
-      inner join fsm.state cs
-        on prev.id = cs.parent_id
-        and cs.statechart_id = coalesce(NEW.statechart_id, OLD.statechart_id)
-      and prev.cycle = false
+      join fsm.state cs
+        on  cs.statechart_id = prev.statechart_id
+        and cs.parent_id = prev.id
+        and prev.cycle = false
+      join chart
+        on  chart.statechart_id = cs.statechart_id
     )
     select seen into the_cycle
     from prev
@@ -39,20 +46,22 @@ BEGIN;
   $$ language plpgsql;
 
   set client_min_messages TO warning;
-  drop trigger if exists check_no_state_loops on fsm.state;
+  drop trigger if exists check_no_state_loops_insert on fsm.state;
+  drop trigger if exists check_no_state_loops_update on fsm.state;
   reset client_min_messages;
 
-
-  -- By making the triggers INITIALLY DEFERRED, we tell PostgreSQL
-  -- to check the condition at COMMIT time. This means that inside a
-  -- single transaction we are allowed to be inconsistent, as long as
-  -- the final result remains consistent.
-
-  create constraint trigger check_no_state_loops
-  after insert or update
+  create trigger check_no_state_loops_insert
+  after insert
   on fsm.state
-  deferrable initially deferred
-  for each row
+  referencing new table as changed
+  for each statement
+  execute function fsm.trig_check_no_state_loops();
+
+  create trigger check_no_state_loops_update
+  after update
+  on fsm.state
+  referencing new table as changed
+  for each statement
   execute function fsm.trig_check_no_state_loops();
 
 COMMIT;
