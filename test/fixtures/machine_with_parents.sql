@@ -19,7 +19,5 @@
     (statechart_id , event                  , source_state      , target_state) values
     (9000000001    , 'search'               , 'initial'         , 'research')          ,
     (9000000001    , 'google_results'       , 'checking_google' , 'got_google')        ,
-    (9000000001    , 'bing_results'         , 'checking_google' , 'got_bing')          ,
+    (9000000001    , 'bing_results'         , 'checking_bing'   , 'got_bing')          ,
     (9000000001    , 'done.state.searching' , 'searching'       , 'read_results');
-
-

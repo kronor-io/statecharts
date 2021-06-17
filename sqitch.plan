@@ -12,3 +12,4 @@ function/get_finalized_parents 2021-05-21T11:35:52Z Jose Lorenzo Rodriguez <jose
 function/handle_machine_events 2021-05-16T12:16:13Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add a function to perform state transitions for a machine
 trigger/check_no_duplicate_event_handler 2021-06-16T07:43:16Z root <root@aa54ed40c209> # Add trigger to check that an event can only be handled by a single level of a subtre
 trigger/check_no_transition_for_final 2021-06-16T14:00:24Z root <root@aa54ed40c209> # Add trigger to check that no transitions are added to final states
+trigger/check_no_cross_boundary_transitions 2021-06-17T07:43:48Z root <root@aa54ed40c209> # Add trigger to check that transitions do not cross boundaries

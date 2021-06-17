@@ -85,5 +85,13 @@ BEGIN;
     'should not be possible to add a transition from a final state when editing the state'
   );
 
+  -- let's test that it is not possible to add transitions across parent boundaries
+  select throws_like(
+    $$ execute insert_transition('invalid', 'checking_bing', 'read_results') $$,
+    '%cannot add transitions between states with different parents%',
+    'should not be possible to add a cross-boundary transition'
+  );
+
+  deallocate insert_transition;
   select finish();
 ROLLBACK;
