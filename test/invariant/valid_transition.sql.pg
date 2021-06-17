@@ -62,7 +62,7 @@ BEGIN;
 
   select throws_like(
     $$ execute insert_transition('imagine', 'errored', 'delusion') $$,
-    '%cannot add transitions from final states: {errored}%',
+    '%cannot add transitions from final states:%',
     'should not be possible to add a transition from a final state'
   );
 
@@ -81,7 +81,7 @@ BEGIN;
       where statechart_id = 9000000001
         and id = 'errored';
     $$,
-    '%cannot add transitions from final states: {errored}%',
+    '%cannot add transitions from final states:%',
     'should not be possible to add a transition from a final state when editing the state'
   );
 
