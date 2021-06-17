@@ -2,7 +2,7 @@ BEGIN;
   select plan(33);
 
   -- will be used to track which callbacks were executed
-  create temporary table callbacks_called (
+  create temporary table pg_temp.callbacks_called (
     id bigint,
     event text,
     data jsonb,
@@ -15,7 +15,7 @@ BEGIN;
   create or replace function pg_temp.log_callback_execution(payload fsm_event_payload)
     returns void as
     $$
-        insert into callbacks_called
+        insert into pg_temp.callbacks_called
         (id, event, data, from_state, to_state, payload_type) values
         ( payload.machine_id
         , payload.event_name

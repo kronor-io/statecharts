@@ -53,7 +53,6 @@ CREATE TABLE fsm.state (
 );
 
 CREATE INDEX idx_parent ON fsm.state(statechart_id, parent_id);
-CREATE UNIQUE INDEX final_state_should_be_unique ON fsm.state(statechart_id, parent_path) WHERE is_final;
 CREATE INDEX idx_parent_path ON fsm.state USING GIST (parent_path) INCLUDE (statechart_id);
 CREATE INDEX idx_node_path ON fsm.state USING GIST (node_path) INCLUDE (statechart_id);
 

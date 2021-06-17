@@ -10,3 +10,5 @@ trigger/check_no_state_loops 2021-05-12T15:57:16Z Jose Lorenzo Rodriguez <jose.z
 state_machine_tables 2021-05-15T22:41:21Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add tables to represent runtime state machines
 function/get_finalized_parents 2021-05-21T11:35:52Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add function to get the list of parent state nodes in a full final state
 function/handle_machine_events 2021-05-16T12:16:13Z Jose Lorenzo Rodriguez <jose.zap@gmail.com> # add a function to perform state transitions for a machine
+trigger/check_no_duplicate_event_handler 2021-06-16T07:43:16Z root <root@aa54ed40c209> # Add trigger to check that an event can only be handled by a single level of a subtre
+trigger/check_no_transition_for_final 2021-06-16T14:00:24Z root <root@aa54ed40c209> # Add trigger to check that no transitions are added to final states

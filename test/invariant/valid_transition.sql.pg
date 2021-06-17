@@ -1,0 +1,89 @@
+BEGIN;
+  select no_plan();
+
+  \i test/fixtures/machine_with_parents.sql
+
+  prepare insert_transition as
+  insert into fsm.transition (statechart_id, event, source_state, target_state)
+  values (9000000001, $1, $2, $3);
+
+  set constraints all immediate;
+
+  insert into fsm.state
+    (statechart_id , id          , name       , parent_id , is_initial , is_final) values
+    (9000000001    , 'errored'   , 'Errored'  , null      , false       , true);
+
+  select lives_ok(
+    $$ execute insert_transition('error', 'checking_bing', 'errored') $$,
+    'inserting a new non-conflicting transition should work'
+  );
+
+  select throws_like(
+    $$ execute insert_transition('error', 'searching', 'errored') $$,
+    '%used for a child or parent state transition%',
+    'using the same event in a parent transition should be an error'
+  );
+
+  delete from fsm.transition
+  where statechart_id = 9000000001
+    and event = 'error';
+
+  select lives_ok(
+    $$ execute insert_transition('error', 'searching', 'errored') $$,
+    'No error after there is only one error transition'
+  );
+
+  select throws_like(
+    $$ execute insert_transition('error', 'checking_bing', 'errored') $$,
+    '%used for a child or parent state transition%',
+    'using the same event in a child transition should be an error'
+  );
+
+  delete from fsm.transition
+  where statechart_id = 9000000001
+    and event = 'error';
+
+  -- let's test that the same event name can be in two transitions inside a parallel state
+  select lives_ok(
+    $$ execute insert_transition('error', 'checking_bing', 'errored') $$,
+    'Adding an error transition is ok'
+  );
+
+  select lives_ok(
+    $$ execute insert_transition('error', 'checking_google', 'errored') $$,
+    'Adding another error transition to a parallel state is also ok'
+  );
+
+  -- Now let's test that it is not possible to add transitions to final states
+
+  insert into fsm.state
+    (statechart_id , id         , name       , parent_id , is_initial , is_final) values
+    (9000000001    , 'delusion' , 'Delusion' , null      , false      , true);
+
+  select throws_like(
+    $$ execute insert_transition('imagine', 'errored', 'delusion') $$,
+    '%cannot add transitions from final states: {errored}%',
+    'should not be possible to add a transition from a final state'
+  );
+
+  update fsm.state set is_final = false
+  where statechart_id = 9000000001
+    and id = 'errored';
+
+  select lives_ok(
+    $$ execute insert_transition('imagine', 'errored', 'delusion') $$,
+    'Adding a transition to a final state is ok'
+  );
+
+  select throws_like(
+    $$
+      update fsm.state set is_final = true
+      where statechart_id = 9000000001
+        and id = 'errored';
+    $$,
+    '%cannot add transitions from final states: {errored}%',
+    'should not be possible to add a transition from a final state when editing the state'
+  );
+
+  select finish();
+ROLLBACK;
