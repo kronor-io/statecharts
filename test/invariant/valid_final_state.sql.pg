@@ -14,15 +14,14 @@ BEGIN;
 
   select lives_ok('test_input', 'inserting an initial and final state should work');
 
-  prepare bad_input as
+  prepare ok_input as
   insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final)
   values
     (9000000000 , 'another_final' , 'another_final' , null , false  , true);
 
-  select throws_like(
-    'bad_input',
-    '%final_state_should_be_unique%',
-    'two top level final states are bad'
+  select lives_ok(
+    'ok_input',
+    'two top level final states are ok'
   );
 
   prepare nested_input as
@@ -33,15 +32,14 @@ BEGIN;
 
   select lives_ok('nested_input', 'compound states can also have a final state');
 
-  prepare bad_nested_input as
+  prepare ok_nested_input as
   insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final)
   values
     (9000000000 , 'second_final_nested' , 'second final'  , 'initial' , false , true);
 
-  select throws_like(
-    'bad_nested_input',
-    '%final_state_should_be_unique%',
-    'two  same-level final states are bad'
+  select lives_ok(
+    'ok_nested_input',
+    'two same-level final states are ok'
   );
 
   select finish();

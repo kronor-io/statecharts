@@ -51,14 +51,21 @@ BEGIN;
   -- note that the results do not include the parent state "research", this is becuase
   -- there still is a possible transition going from searching to read_results inside thre
   -- "research" node. This means that we cannot consider "research" finalized.
-  select is(
+  select
+    is(
       array_agg(p.id)
-    , array['searching', 'binging']
-    , 'when all the final states for a parallel node are reached, the parent node is present in the result')
-  from fsm.get_finalized_parents(
-      80000000000
-    , (select parent_path from fsm.state where id = 'got_bing')
-  ) p;
+    , array['binging', 'searching']
+    , 'when all the final states for a parallel node are reached, the parent node is present in the result'
+    )
+  from (
+    select p.id
+    from
+        fsm.get_finalized_parents(
+          80000000000
+        , (select parent_path from fsm.state where id = 'got_bing')
+        ) p
+    order by p.id
+   ) p;
 
 
   select finish();

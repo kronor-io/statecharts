@@ -72,13 +72,17 @@ BEGIN;
   select
     is(
       array_agg(to_state)
-    , array['searching', 'googling', 'checking_google', 'binging', 'checking_bing']
-    , 'only initial states should have fired the on_entry callback, in the right order'
+    , array['binging','checking_bing','checking_google','googling','searching']
+    , 'only initial states should have fired the on_entry callback'
     )
-  from callbacks_called
-  where id = 80000000000
-    and event = 'search'
-    and payload_type = 'on_entry';
+  from (
+      select to_state
+      from callbacks_called
+      where id = 80000000000
+        and event = 'search'
+        and payload_type = 'on_entry'
+      order by to_state
+  ) c;
 
   select
     is(
@@ -180,12 +184,15 @@ BEGIN;
   select
     is(
       array_agg(from_state)
-    , array['googling', 'got_google', 'binging', 'got_bing', 'searching']
-    , 'only active states should have fired the on_exit callback, in the right order'
+    , array['binging','googling','got_bing','got_google','searching']
+    , 'only active states should have fired the on_exit callback'
     )
-  from callbacks_called
-  where id = 80000000000
-    and payload_type = 'on_exit';
+  from
+      (select from_state from callbacks_called
+        where id = 80000000000
+          and payload_type = 'on_exit'
+        order by from_state) c;
+
 
   select
     is(

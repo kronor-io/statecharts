@@ -1,5 +1,5 @@
 BEGIN;
-  select no_plan();
+  select plan(10);
 
   \i test/fixtures/machine_with_parents.sql
 

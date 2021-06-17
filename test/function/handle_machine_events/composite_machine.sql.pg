@@ -37,8 +37,12 @@ BEGIN;
   , array['binging', 'checking_bing', 'checking_google', 'googling', 'searching']
   , 'all initial states in the search tree should be active'
   )
-  from fsm.state_machine_state
-  where state_machine_id = 80000000000 and exited_at is null;
+  from (
+    select state_id
+    from fsm.state_machine_state
+    where state_machine_id = 80000000000 and exited_at is null
+    order by state_id
+  ) c;
 
   -- Only get results from google now
   insert into fsm.state_machine_event
@@ -55,16 +59,24 @@ BEGIN;
   , array['binging', 'checking_bing', 'googling', 'got_google', 'searching']
   , 'when a composite state activates its final state, the parent remains activated'
   )
-  from fsm.state_machine_state
-  where state_machine_id = 80000000000 and exited_at is null;
+  from (
+    select state_id
+    from fsm.state_machine_state
+    where state_machine_id = 80000000000 and exited_at is null
+    order by state_id
+  ) c;
 
   select is(
       array_agg(name)
-    , array['done.state.got_google', 'done.state.googling']
+    , array['done.state.googling', 'done.state.got_google']
     , 'done.state.got_google and googling should be raised'
   )
-  from fsm.state_machine_event
-  where state_machine_id = 80000000000 and handled_at is null;
+  from (
+      select name
+      from fsm.state_machine_event
+      where state_machine_id = 80000000000 and handled_at is null
+      order by name
+  ) c;
 
   -- Get results fro bing
   insert into fsm.state_machine_event
@@ -81,16 +93,24 @@ BEGIN;
   , array['binging', 'googling', 'got_bing', 'got_google', 'searching']
   , 'The searching parallel state should have reached all final states'
   )
-  from fsm.state_machine_state
-  where state_machine_id = 80000000000 and exited_at is null;
+  from (
+      select state_id
+      from fsm.state_machine_state
+      where state_machine_id = 80000000000 and exited_at is null
+      order by state_id
+  ) c;
 
   select is(
       array_agg(name)
-    , array['done.state.got_bing', 'done.state.searching', 'done.state.binging']
+    , array['done.state.binging', 'done.state.got_bing', 'done.state.searching']
     , 'donde events up to serching should be raised'
   )
-  from fsm.state_machine_event
-  where state_machine_id = 80000000000 and handled_at is null;
+  from (
+      select name
+      from fsm.state_machine_event
+      where state_machine_id = 80000000000 and handled_at is null
+      order by name
+  ) c;
 
 
   select finish();
