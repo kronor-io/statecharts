@@ -3,14 +3,7 @@ BEGIN;
 
   \i test/fixtures/composite_machine.sql
 
-  -- creating a new machine should be a function
-  insert into fsm.state_machine
-    (id          , statechart_id) values
-    (80000000000 , 9000000001);
-
-  insert into fsm.state_machine_state
-    (state_machine_id, statechart_id, state_id) values
-    (80000000000, 9000000001, 'initial');
+  select fsm.start_machine(9000000001, machine_id := 80000000000);
 
 
   -- transition to the search state, which should activate all initial sub-states

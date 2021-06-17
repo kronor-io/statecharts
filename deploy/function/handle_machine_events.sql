@@ -31,7 +31,7 @@ BEGIN;
       -- unhandled events, we need to mark them as handled. This is why we start
       -- the process with the update.
 
-      -- The reson for using a select and then an update, instead of just issuing a plain
+      -- The reason for using a select and then an update, instead of just issuing a plain
       -- update with conditions is that we want access to the list of events in creation order
       -- rather than the order that postgres found most convenient.
       for handled in
@@ -185,7 +185,7 @@ BEGIN;
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((a_target_state.on_entry).schema_name, 'public')
-              , (a_target_state.on_exit).function_name
+              , (a_target_state.on_entry).function_name
               , ( machine_id
                 , handled.name
                 , handled.data

@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(33);
+  select plan(34);
 
   -- will be used to track which callbacks were executed
   create temporary table pg_temp.callbacks_called (
@@ -33,18 +33,12 @@ BEGIN;
     , on_exit = ('pg_temp', 'log_callback_execution')
   where statechart_id = 9000000001;
 
-  -- creating a new machine should be a function
-  insert into fsm.state_machine
-    (id          , statechart_id) values
-    (80000000000 , 9000000001);
+  select fsm.start_machine(9000000001, machine_id := 80000000000);
 
-  insert into fsm.state_machine_state
-    (state_machine_id, statechart_id, state_id) values
-    (80000000000, 9000000001, 'initial');
-
-
-
-
+  select
+      is(count(*), 1::bigint, 'the on_entry should have been called')
+  from callbacks_called
+  where id = 80000000000 and event = '__initial__';
 
 
 

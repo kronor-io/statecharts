@@ -1,0 +1,20 @@
+BEGIN;
+  select plan(3);
+
+  \i test/fixtures/machine_with_parents.sql
+
+  select lives_ok(
+     $$ select fsm.start_machine(9000000001) $$,
+     'startting a new machine should work'
+  );
+
+  select is(count(*), 1::bigint, 'one machine should be created')
+  from fsm.state_machine
+  where statechart_id = 9000000001;
+
+  select is(state_id, 'initial', 'the initial state should be there')
+  from fsm.state_machine_state
+  where statechart_id = 9000000001;
+
+  select finish();
+ROLLBACK;

@@ -7,8 +7,6 @@ BEGIN;
   insert into fsm.transition (statechart_id, event, source_state, target_state)
   values (9000000001, $1, $2, $3);
 
-  set constraints all immediate;
-
   insert into fsm.state
     (statechart_id , id          , name       , parent_id , is_initial , is_final) values
     (9000000001    , 'errored'   , 'Errored'  , null      , false       , true);
