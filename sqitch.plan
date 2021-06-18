@@ -14,3 +14,4 @@ function/start_machine 2021-06-17T11:12:10Z root <root@aa54ed40c209> # Add funct
 trigger/check_no_duplicate_event_handler 2021-06-16T07:43:16Z root <root@aa54ed40c209> # Add trigger to check that an event can only be handled by a single level of a subtre
 trigger/check_no_transition_for_final 2021-06-16T14:00:24Z root <root@aa54ed40c209> # Add trigger to check that no transitions are added to final states
 trigger/check_no_cross_boundary_transitions 2021-06-17T07:43:48Z root <root@aa54ed40c209> # Add trigger to check that transitions do not cross boundaries
+trigger/notify_machine_event 2021-06-18T08:27:26Z root <root@aa54ed40c209> # Add trigger to notify when a machine has new events

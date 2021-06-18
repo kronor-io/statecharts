@@ -1,15 +1,16 @@
 BEGIN;
   select plan(10);
 
+  \set chart 9000000001
   \i test/fixtures/machine_with_parents.sql
 
   prepare insert_transition as
   insert into fsm.transition (statechart_id, event, source_state, target_state)
-  values (9000000001, $1, $2, $3);
+  values (:chart, $1, $2, $3);
 
   insert into fsm.state
-    (statechart_id , id          , name       , parent_id , is_initial , is_final) values
-    (9000000001    , 'errored'   , 'Errored'  , null      , false       , true);
+    (statechart_id , id        , name      , parent_id , is_initial , is_final) values
+    (:chart        , 'errored' , 'Errored' , null      , false      , true);
 
   select lives_ok(
     $$ execute insert_transition('error', 'checking_bing', 'errored') $$,
@@ -23,7 +24,7 @@ BEGIN;
   );
 
   delete from fsm.transition
-  where statechart_id = 9000000001
+  where statechart_id = :chart
     and event = 'error';
 
   select lives_ok(
@@ -38,7 +39,7 @@ BEGIN;
   );
 
   delete from fsm.transition
-  where statechart_id = 9000000001
+  where statechart_id = :chart
     and event = 'error';
 
   -- let's test that the same event name can be in two transitions inside a parallel state
@@ -56,7 +57,7 @@ BEGIN;
 
   insert into fsm.state
     (statechart_id , id         , name       , parent_id , is_initial , is_final) values
-    (9000000001    , 'delusion' , 'Delusion' , null      , false      , true);
+    (:chart    , 'delusion' , 'Delusion' , null      , false      , true);
 
   select throws_like(
     $$ execute insert_transition('imagine', 'errored', 'delusion') $$,
@@ -65,7 +66,7 @@ BEGIN;
   );
 
   update fsm.state set is_final = false
-  where statechart_id = 9000000001
+  where statechart_id = :chart
     and id = 'errored';
 
   select lives_ok(
@@ -74,11 +75,12 @@ BEGIN;
   );
 
   select throws_like(
+    format(
     $$
       update fsm.state set is_final = true
-      where statechart_id = 9000000001
+      where statechart_id = %s
         and id = 'errored';
-    $$,
+    $$, :chart),
     '%cannot add transitions from final states:%',
     'should not be possible to add a transition from a final state when editing the state'
   );

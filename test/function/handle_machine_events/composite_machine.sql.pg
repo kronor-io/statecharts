@@ -1,11 +1,11 @@
 BEGIN;
   select plan(10);
 
-  \i test/fixtures/composite_machine.sql
-
   \set shard 7000000001
   \set chart 9000000001
   \set machine 80000000000
+
+  \i test/fixtures/composite_machine.sql
 
   select fsm.start_machine(:shard, :chart, machine_id := :machine);
 
