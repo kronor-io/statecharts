@@ -2,6 +2,6 @@
 
 BEGIN;
 
-  drop function if exists fsm.get_finalized_parents;
+  drop function if exists fsm.get_finalized_parents(bigint, bigint, ltree);
 
 COMMIT;

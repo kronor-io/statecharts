@@ -2,6 +2,6 @@
 
 BEGIN;
 
-drop function if exists fsm.handle_machine_events;
+drop function if exists fsm.handle_machine_events(bigint, bigint);
 
 COMMIT;

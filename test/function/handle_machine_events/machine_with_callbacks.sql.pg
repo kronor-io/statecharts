@@ -1,6 +1,10 @@
 BEGIN;
   select plan(34);
 
+  \set shard 7000000001
+  \set chart 9000000001
+  \set machine 80000000000
+
   -- will be used to track which callbacks were executed
   create temporary table pg_temp.callbacks_called (
     id bigint,
@@ -31,37 +35,37 @@ BEGIN;
   update fsm.state set
       on_entry = ('pg_temp', 'log_callback_execution')
     , on_exit = ('pg_temp', 'log_callback_execution')
-  where statechart_id = 9000000001;
+  where statechart_id = :chart;
 
-  select fsm.start_machine(9000000001, machine_id := 80000000000);
+  select fsm.start_machine(:shard, :chart, machine_id := :machine);
 
   select
       is(count(*), 1::bigint, 'the on_entry should have been called')
   from callbacks_called
-  where id = 80000000000 and event = '__initial__';
+  where id = :machine and event = '__initial__';
 
 
 
   -- transition to the search state, which should activate all initial sub-states
 
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'search', '{"for": "search"}');
+    (shard_id , state_machine_id , name     , data) values
+    (:shard   , :machine         , 'search' , '{"for": "search"}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handled a single simple event'
   );
 
   select
       is(data, '{"for": "search"}'::jsonb, 'the data payload is the same for all')
   from callbacks_called
-  where id = 80000000000 and event = 'search';
+  where id = :machine and event = 'search';
 
   select
       is(from_state, 'initial', 'the from_state is the same for all')
   from callbacks_called
-  where id = 80000000000 and event = 'search';
+  where id = :machine and event = 'search';
 
   select
     is(
@@ -72,7 +76,7 @@ BEGIN;
   from (
       select to_state
       from callbacks_called
-      where id = 80000000000
+      where id = :machine
         and event = 'search'
         and payload_type = 'on_entry'
       order by to_state
@@ -85,7 +89,7 @@ BEGIN;
     , 'only searching should appear as the to_state when the payload_type is on_exit'
     )
   from callbacks_called
-  where id = 80000000000
+  where id = :machine
     and event = 'search'
     and payload_type = 'on_exit';
 
@@ -99,28 +103,28 @@ BEGIN;
 
   -- Only get results from google now
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'google_results', '{"results": "google"}');
+    (shard_id , state_machine_id , name             , data) values
+    (:shard   , :machine         , 'google_results' , '{"results": "google"}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handled a single simple event'
   );
 
   select
       is(data, '{"results": "google"}'::jsonb, 'same google results or all callbacks')
   from callbacks_called
-  where id = 80000000000 and event = 'google_results';
+  where id = :machine and event = 'google_results';
 
   select
       is(from_state, 'checking_google', 'the from state should be checking_google')
   from callbacks_called
-  where id = 80000000000 and event = 'google_results';
+  where id = :machine and event = 'google_results';
 
   select
       is(to_state, 'got_google', 'the from state should be got_google')
   from callbacks_called
-  where id = 80000000000 and event = 'google_results';
+  where id = :machine and event = 'google_results';
 
 
 
@@ -132,28 +136,28 @@ BEGIN;
 
   -- Get results from bing
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'bing_results', '{"results": "bing"}');
+    (shard_id , state_machine_id , name           , data) values
+    (:shard   , :machine         , 'bing_results' , '{"results": "bing"}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handle the bing_results event'
   );
 
   select
       is(data, '{"results": "bing"}'::jsonb, 'same bing results or all callbacks')
   from callbacks_called
-  where id = 80000000000 and event = 'bing_results';
+  where id = :machine and event = 'bing_results';
 
   select
       is(from_state, 'checking_bing', 'the from state should be checking_bing')
   from callbacks_called
-  where id = 80000000000 and event = 'bing_results';
+  where id = :machine and event = 'bing_results';
 
   select
       is(to_state, 'got_bing', 'the from state should be got_bing')
   from callbacks_called
-  where id = 80000000000 and event = 'bing_results';
+  where id = :machine and event = 'bing_results';
 
 
 
@@ -167,13 +171,13 @@ BEGIN;
   -- The last transition should have generated a few done events
   -- let's process them
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handle the done events'
   );
 
   select is(count(*), 6::bigint, 'there should be 8 logged callbacks')
   from callbacks_called
-  where id = 80000000000;
+  where id = :machine;
 
   select
     is(
@@ -183,7 +187,7 @@ BEGIN;
     )
   from
       (select from_state from callbacks_called
-        where id = 80000000000
+        where id = :machine
           and payload_type = 'on_exit'
         order by from_state) c;
 
@@ -195,7 +199,7 @@ BEGIN;
     , 'only displaying should have executed the on_entry callback'
     )
   from callbacks_called
-  where id = 80000000000
+  where id = :machine
     and payload_type = 'on_entry';
 
   select finish();

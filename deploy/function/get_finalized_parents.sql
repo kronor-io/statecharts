@@ -2,7 +2,7 @@
 
 BEGIN;
 
-  create or replace function fsm.get_finalized_parents(machine_id bigint, active_state_parent_path ltree)
+  create or replace function fsm.get_finalized_parents(shard bigint, machine_id bigint, active_state_parent_path ltree)
     returns setof fsm.state as
   $$
     with all_parents as (
@@ -13,9 +13,10 @@ BEGIN;
        and exists (
           select 1
           from fsm.state_machine_state current_state
-          where current_state.state_machine_id = machine_id
-          and current_state.exited_at is null
-          and current_state.statechart_id = a_parent.statechart_id
+          where current_state.shard_id = shard
+            and current_state.state_machine_id = machine_id
+            and current_state.exited_at is null
+            and current_state.statechart_id = a_parent.statechart_id
        )
     )
     select *
@@ -28,7 +29,8 @@ BEGIN;
       select 1
       from fsm.state s
       join fsm.state_machine_state current_state
-        on  current_state.state_machine_id = machine_id
+        on  current_state.shard_id = shard
+        and current_state.state_machine_id = machine_id
         and current_state.state_id = s.id
         and current_state.exited_at is null
       where parent.id = s.parent_id
@@ -51,7 +53,8 @@ BEGIN;
       select 1
       from fsm.state s
       join fsm.state_machine_state current_state
-        on  current_state.state_machine_id = machine_id
+        on  current_state.shard_id = shard
+        and current_state.state_machine_id = machine_id
         and current_state.state_id = s.id
         and current_state.exited_at is null
       -- Dive into the children of the parent we are inspecting
@@ -71,7 +74,7 @@ BEGIN;
     )
   $$ language sql strict volatile;
 
-comment on function fsm.get_finalized_parents (bigint, ltree) is
+comment on function fsm.get_finalized_parents (bigint, bigint, ltree) is
 $_$
 A finalized parent can be defined as a compound state where all its children have reached
 a state where no further advancement is possible.

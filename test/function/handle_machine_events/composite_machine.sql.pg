@@ -3,27 +3,31 @@ BEGIN;
 
   \i test/fixtures/composite_machine.sql
 
-  select fsm.start_machine(9000000001, machine_id := 80000000000);
+  \set shard 7000000001
+  \set chart 9000000001
+  \set machine 80000000000
+
+  select fsm.start_machine(:shard, :chart, machine_id := :machine);
 
 
   -- transition to the search state, which should activate all initial sub-states
 
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'search', '{}');
+    (shard_id , state_machine_id , name     , data) values
+    (:shard   , :machine         , 'search' , '{}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handled a single simple event'
   );
 
   select is(count(*), 0::bigint, 'all events should be handled')
   from fsm.state_machine_event
-  where state_machine_id = 80000000000 and handled_at is null;
+  where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
   select is(exited_at, now(), 'should have exited the initial event')
   from fsm.state_machine_state
-  where state_machine_id = 80000000000 and state_id = 'initial';
+  where shard_id = :shard and state_machine_id = :machine and state_id = 'initial';
 
   select is(
     array_agg(state_id)
@@ -33,17 +37,17 @@ BEGIN;
   from (
     select state_id
     from fsm.state_machine_state
-    where state_machine_id = 80000000000 and exited_at is null
+    where shard_id = :shard and state_machine_id = :machine and exited_at is null
     order by state_id
   ) c;
 
   -- Only get results from google now
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'google_results', '{}');
+    (shard_id , state_machine_id , name             , data) values
+    (:shard   , :machine         , 'google_results' , '{}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handle the google_results event'
   );
 
@@ -55,7 +59,7 @@ BEGIN;
   from (
     select state_id
     from fsm.state_machine_state
-    where state_machine_id = 80000000000 and exited_at is null
+    where shard_id = :shard and state_machine_id = :machine and exited_at is null
     order by state_id
   ) c;
 
@@ -67,17 +71,17 @@ BEGIN;
   from (
       select name
       from fsm.state_machine_event
-      where state_machine_id = 80000000000 and handled_at is null
+      where shard_id = :shard and state_machine_id = :machine and handled_at is null
       order by name
   ) c;
 
   -- Get results fro bing
   insert into fsm.state_machine_event
-    (state_machine_id, name, data) values
-    (80000000000, 'bing_results', '{}');
+    (shard_id , state_machine_id , name           , data) values
+    (:shard   , :machine         , 'bing_results' , '{}');
 
   select lives_ok(
-    $$ select fsm.handle_machine_events(80000000000) $$,
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
     'handle the bing_results event'
   );
 
@@ -89,7 +93,7 @@ BEGIN;
   from (
       select state_id
       from fsm.state_machine_state
-      where state_machine_id = 80000000000 and exited_at is null
+      where shard_id = :shard and state_machine_id = :machine and exited_at is null
       order by state_id
   ) c;
 
@@ -101,7 +105,7 @@ BEGIN;
   from (
       select name
       from fsm.state_machine_event
-      where state_machine_id = 80000000000 and handled_at is null
+      where shard_id = :shard and state_machine_id = :machine and handled_at is null
       order by name
   ) c;
 

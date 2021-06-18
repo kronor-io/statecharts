@@ -1,34 +1,40 @@
 BEGIN;
   select plan(3);
 
+  \set shard 7000000001
+  \set machine 80000000000
+  \set chart 9000000001
+
   \i test/fixtures/machine_with_parents.sql
 
   -- creating a new machine should be a function
   insert into fsm.state_machine
-    (id          , statechart_id) values
-    (80000000000 , 9000000001);
+    (shard_id , id       , statechart_id) values
+    (:shard   , :machine , :chart);
 
   insert into fsm.state_machine_state
-    (state_machine_id, statechart_id, state_id) values
-    (80000000000, 9000000001, 'searching'),
-    (80000000000, 9000000001, 'googling'),
-    (80000000000, 9000000001, 'checking_google'),
-    (80000000000, 9000000001, 'binging'),
-    (80000000000, 9000000001, 'checking_bing');
+    (shard_id , state_machine_id , statechart_id , state_id) values
+    (:shard   , :machine         , :chart        , 'searching')       ,
+    (:shard   , :machine         , :chart        , 'googling')        ,
+    (:shard   , :machine         , :chart        , 'checking_google') ,
+    (:shard   , :machine         , :chart        , 'binging')         ,
+    (:shard   , :machine         , :chart        , 'checking_bing');
 
   select is(array_agg(p.id), null, 'when no final state has been reached it should return null')
   from fsm.get_finalized_parents(
-      80000000000
+      :shard
+    , :machine
     , (select parent_path from fsm.state where id = 'checking_google')
   ) p;
 
   update fsm.state_machine_state set exited_at = now()
-    where state_machine_id = 80000000000
+    where shard_id = :shard
+      and state_machine_id = :machine
       and state_id = 'checking_google';
 
   insert into fsm.state_machine_state
-    (state_machine_id, statechart_id, state_id) values
-    (80000000000, 9000000001, 'got_google');
+    (shard_id , state_machine_id , statechart_id , state_id) values
+    (:shard   , :machine         , :chart        , 'got_google');
 
   select is(
       array_agg(p.id)
@@ -36,17 +42,19 @@ BEGIN;
     , 'when only one parallel state finishes only the immediate parent should be present'
   )
   from fsm.get_finalized_parents(
-      80000000000
+      :shard
+    , :machine
     , (select parent_path from fsm.state where id = 'got_google')
   ) p;
 
   update fsm.state_machine_state set exited_at = now()
-    where state_machine_id = 80000000000
+    where shard_id = :shard
+      and state_machine_id = :machine
       and state_id = 'checking_bing';
 
   insert into fsm.state_machine_state
-    (state_machine_id, statechart_id, state_id) values
-    (80000000000, 9000000001, 'got_bing');
+    (shard_id , state_machine_id , statechart_id , state_id) values
+    (:shard   , :machine         , :chart        , 'got_bing');
 
   -- note that the results do not include the parent state "research", this is becuase
   -- there still is a possible transition going from searching to read_results inside thre
@@ -61,7 +69,8 @@ BEGIN;
     select p.id
     from
         fsm.get_finalized_parents(
-          80000000000
+          :shard
+        , :machine
         , (select parent_path from fsm.state where id = 'got_bing')
         ) p
     order by p.id

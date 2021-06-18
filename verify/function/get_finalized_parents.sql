@@ -2,6 +2,6 @@
 
 BEGIN;
 
--- XXX Add verifications here.
+  select  has_function_privilege('fsm.get_finalized_parents(bigint, bigint, ltree)', 'execute');
 
 ROLLBACK;

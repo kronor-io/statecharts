@@ -3,8 +3,9 @@
 BEGIN;
 
   drop type if exists fsm_event_payload restrict;
-  create type fsm_event_payload as (
-    machine_id bigint
+  create type fsm_event_payload as
+  ( shard_id bigint
+  , machine_id bigint
   , event_name text
   , data jsonb
   , from_state text
@@ -12,7 +13,7 @@ BEGIN;
   , payload_type text
   );
 
-  create or replace function fsm.handle_machine_events(machine_id bigint)
+  create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
     returns void as
   $$
     declare
@@ -38,13 +39,14 @@ BEGIN;
           with unhandled as (
             select *
             from fsm.state_machine_event
-            where state_machine_id = machine_id
+            where shard_id = shard
+              and state_machine_id = machine_id
               and handled_at is null
             order by created_at, id asc
           )
           , handling as (
             update fsm.state_machine_event set handled_at = now()
-            where id in (select id from unhandled)
+            where (shard_id, id) in (select shard_id, id from unhandled)
           )
           select * from unhandled
       loop
@@ -92,7 +94,8 @@ BEGIN;
               -- so, we filter by `exited_at is null` and correlate to the current
               -- state_child we are inspecting
               join fsm.state_machine_state as current_children_state
-                on  current_children_state.state_machine_id = machine_id
+                on current_children_state.shard_id = shard
+                and current_children_state.state_machine_id = machine_id
                 and current_children_state.state_id = state_child.id
                 and current_children_state.exited_at is null
               where state_child.statechart_id = current_state.statechart_id
@@ -112,7 +115,8 @@ BEGIN;
             ) tt
           ) target_tree on true
 
-          where current_state.state_machine_id = machine_id
+          where current_state.shard_id = shard
+            and current_state.state_machine_id = machine_id
             and current_state.exited_at is null
         -- transition-query}}}
 
@@ -136,7 +140,8 @@ BEGIN;
             , updated_states as (
                 update fsm.state_machine_state
                 set exited_at = now()
-                where state_machine_id = machine_id
+                where shard_id = shard
+                  and state_machine_id = machine_id
                   and state_id in (select a.id from all_states a)
                   and exited_at is null
               )
@@ -146,7 +151,8 @@ BEGIN;
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((a_source_state.on_exit).schema_name, 'public')
               , (a_source_state.on_exit).function_name
-              , ( machine_id
+              , ( shard
+                , machine_id
                 , handled.name
                 , handled.data
                 , a_source_state.id
@@ -173,9 +179,10 @@ BEGIN;
               )
 
             , new_states as (
-                insert into fsm.state_machine_state (state_machine_id, statechart_id, state_id)
+                insert into fsm.state_machine_state (shard_id, state_machine_id, statechart_id, state_id)
                 select
-                    machine_id as state_machine_id
+                    shard as shard_id
+                  , machine_id as state_machine_id
                   , a.statechart_id
                   , a.id as state_id
                 from all_states a
@@ -186,7 +193,8 @@ BEGIN;
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((a_target_state.on_entry).schema_name, 'public')
               , (a_target_state.on_entry).function_name
-              , ( machine_id
+              , ( shard
+                , machine_id
                 , handled.name
                 , handled.data
                 , state_transition.source_state->>'id'
@@ -202,18 +210,20 @@ BEGIN;
           -- {{{event-generation
           if state_transition.target_is_final
           then
-            insert into fsm.state_machine_event (state_machine_id, name, data) values
-              ( machine_id
+            insert into fsm.state_machine_event (shard_id, state_machine_id, name, data) values
+              ( shard
+              , machine_id
               , format('done.state.%s', state_transition.target_state->>'id')
               , '{}'
               );
 
-            insert into fsm.state_machine_event (state_machine_id, name, data)
-              select machine_id as state_machine_id
+            insert into fsm.state_machine_event (shard_id, state_machine_id, name, data)
+              select shard as shard_id, machine_id as state_machine_id
                    , format('done.state.%s', f.id)
                    , '{}' as data
               from fsm.get_finalized_parents(
-                  machine_id
+                  shard
+                , machine_id
                 , (state_transition.target_state->>'parent_path')::ltree
               ) f;
           end if;

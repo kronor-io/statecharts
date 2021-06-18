@@ -2,6 +2,6 @@
 
 BEGIN;
 
-  select  has_function_privilege('fsm.get_initial_state(bigint)', 'execute');
+  select  has_function_privilege('fsm.get_initial_state(bigint, bigint)', 'execute');
 
 ROLLBACK;
