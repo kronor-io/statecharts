@@ -1,6 +1,5 @@
 module Main where
 
-import Colog ((<&))
 import Colog qualified
 import Control.Immortal qualified
 import Control.Monad.Metrics qualified as Metrics
