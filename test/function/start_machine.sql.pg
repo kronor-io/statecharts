@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(3);
+  select no_plan();
 
   \set shard 7000000001
   \set chart 9000000001

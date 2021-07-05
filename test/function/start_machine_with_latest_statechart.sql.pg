@@ -1,0 +1,20 @@
+BEGIN;
+
+    select plan(1);
+
+    \set shard 7000000001
+    \set chart 9000000001
+    \i test/fixtures/machine_with_parents.sql
+
+    select lives_ok(
+        format($$ select fsm.start_machine_with_latest_statechart(%s, 'name') $$, :shard),
+        'starting a new machine should work'
+    );
+
+    select is(state_id, 'initial', 'the initial state should be there')
+    from fsm.state_machine_state
+    where shard_id = :shard and statechart_id = :chart;
+
+    select finish();
+ROLLBACK;
+

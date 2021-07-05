@@ -10,6 +10,6 @@ BEGIN;
       where s.statechart_id = statechart
         and s.is_initial
         and parent_id is null
-  $$ language sql stable strict;
+  $$ language sql stable strict parallel safe;
 
 COMMIT;

@@ -72,7 +72,7 @@ BEGIN;
           where s.node_path @> child.parent_path
         )
     )
-  $$ language sql strict volatile;
+  $$ language sql strict stable parallel safe;
 
 comment on function fsm.get_finalized_parents (bigint, bigint, ltree) is
 $_$

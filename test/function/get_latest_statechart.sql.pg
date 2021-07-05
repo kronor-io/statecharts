@@ -1,0 +1,31 @@
+BEGIN;
+
+    select plan(5);
+
+    insert into fsm.statechart (name, version) values ('search', 1::semver);
+    insert into fsm.statechart (name, version) values ('second', 2::semver);
+    insert into fsm.statechart (name, version) values ('another', 3::semver);
+
+    select is(1::semver, version)
+    from fsm.get_latest_statechart('search');
+
+    select is(2::semver, version)
+    from fsm.get_latest_statechart('second');
+
+    select is(3::semver, version)
+    from fsm.get_latest_statechart('another');
+
+    insert into fsm.statechart (name, version) values ('search', 1.1::semver);
+
+    select is(1.1::semver, version)
+    from fsm.get_latest_statechart('search');
+
+    insert into fsm.statechart (name, version) values ('another', 2::semver);
+
+    select is(3::semver, version)
+    from fsm.get_latest_statechart('another');
+
+    select is(null, version) from fsm.get_latest_statechart(null);
+
+    select finish();
+ROLLBACK;

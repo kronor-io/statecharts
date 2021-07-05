@@ -47,6 +47,6 @@ BEGIN;
 
         return;
       end
-    $$ language plpgsql;
+    $$ language plpgsql volatile;
 
 COMMIT;

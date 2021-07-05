@@ -16,3 +16,5 @@ trigger/check_no_duplicate_event_handler 2021-06-16T07:43:16Z root <root@aa54ed4
 trigger/check_no_transition_for_final 2021-06-16T14:00:24Z root <root@aa54ed40c209> # Add trigger to check that no transitions are added to final states
 trigger/check_no_cross_boundary_transitions 2021-06-17T07:43:48Z root <root@aa54ed40c209> # Add trigger to check that transitions do not cross boundaries
 trigger/notify_machine_event 2021-06-18T08:27:26Z root <root@aa54ed40c209> # Add trigger to notify when a machine has new events
+function/get_latest_statechart 2021-07-05T13:42:38Z root <root@aa3dfe7c2fa8> # Add a function to select the latest statechart by version
+function/start_machine_with_latest_statechart 2021-07-05T15:13:07Z root <root@aa3dfe7c2fa8> # Add a function to start a new machine with the latest statechart version
