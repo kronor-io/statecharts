@@ -6,6 +6,7 @@ BEGIN;
 
   SET client_min_messages TO warning;
   CREATE EXTENSION IF NOT EXISTS ltree;
+  CREATE EXTENSION IF NOT EXISTS semver;
   RESET client_min_messages;
 
 COMMIT;
