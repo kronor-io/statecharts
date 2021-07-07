@@ -12,9 +12,7 @@ BEGIN;
 
   -- transition to the search state, which should activate all initial sub-states
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name     , data) values
-    (:shard   , :machine         , 'search' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'search');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -42,9 +40,7 @@ BEGIN;
   ) c;
 
   -- Only get results from google now
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name             , data) values
-    (:shard   , :machine         , 'google_results' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'google_results');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -76,9 +72,7 @@ BEGIN;
   ) c;
 
   -- Get results fro bing
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name           , data) values
-    (:shard   , :machine         , 'bing_results' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'bing_results');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),

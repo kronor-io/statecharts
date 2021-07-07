@@ -26,9 +26,7 @@ BEGIN;
 
   -- transition to the search state
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name     , data) values
-    (:shard   , :machine         , 'search' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'search');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -53,9 +51,7 @@ BEGIN;
 
   -- transition to the displaying state
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name      , data) values
-    (:shard   , :machine         , 'results' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'results');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -80,9 +76,7 @@ BEGIN;
 
   -- transition to the zoomed_in state
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name   , data) values
-    (:shard   , :machine         , 'zoom' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'zoom');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -107,9 +101,7 @@ BEGIN;
 
   -- transition back to displaying
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name       , data) values
-    (:shard   , :machine         , 'zoom_out' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'zoom_out');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
@@ -135,9 +127,7 @@ BEGIN;
 
   -- verify that events with no associated transitions are not an issue
 
-  insert into fsm.state_machine_event
-    (shard_id , state_machine_id , name   , data) values
-    (:shard   , :machine         , 'derp' , '{}');
+  select fsm.notify_state_machine(:shard, :machine, 'derp');
 
   select lives_ok(
     format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
