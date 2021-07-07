@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(8);
+  select plan(9);
 
   insert into fsm.statechart (id, name, version)
   values (9000000000,'test', 1::semver);
@@ -12,7 +12,7 @@ BEGIN;
 
   select lives_ok(
     $$execute insert_state('my_initial', null, true)$$,
-    'inserting an initial should work'
+    'inserting an initial state should work'
   );
 
   select throws_like(
@@ -57,6 +57,15 @@ BEGIN;
     'exactly one initial state is required per statechart',
     'check when the global initial is made a child state'
   );
+
+  select lives_ok(
+    $$
+        with a as (delete from fsm.statechart where id = 9000000000)
+        delete from fsm.state where statechart_id = 9000000000
+    $$ ,
+    'deleting everything is ok'
+  );
+
 
   select finish();
 ROLLBACK;
