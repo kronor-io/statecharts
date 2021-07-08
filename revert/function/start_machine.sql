@@ -2,6 +2,6 @@
 
 BEGIN;
 
-  drop function if exists fsm.start_machine(bigint, bigint, bigint);
+  drop function if exists fsm.start_machine(bigint, bigint, jsonb, bigint);
 
 COMMIT;

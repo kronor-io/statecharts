@@ -2,7 +2,7 @@
 
 BEGIN;
 
-  create or replace function fsm.start_machine(shard bigint, statechart bigint, machine_id bigint default null)
+  create or replace function fsm.start_machine(shard bigint, statechart bigint, initial_data jsonb default '{}', machine_id bigint default null)
     returns setof fsm.state_machine as
     $$
       declare
@@ -34,7 +34,7 @@ BEGIN;
                 , ( shard
                   , machine.id
                   , '__initial__'
-                  , '{}'::jsonb
+                  , initial_data
                   , null
                   , initial.id
                   , 'on_entry'
