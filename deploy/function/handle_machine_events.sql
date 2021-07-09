@@ -2,7 +2,11 @@
 
 BEGIN;
 
+
+  set client_min_messages TO warning;
   drop type if exists fsm_event_payload restrict;
+  reset client_min_messages;
+
   create type fsm_event_payload as
   ( shard_id bigint
   , machine_id bigint
