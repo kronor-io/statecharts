@@ -9,9 +9,8 @@ BEGIN;
         initial fsm.state%rowtype;
         machine fsm.state_machine%rowtype;
       begin
-        for initial in select * from fsm.get_initial_state(statechart)
-        loop
-          if machine_id is not null
+
+        if machine_id is not null
           then
               insert into fsm.state_machine (shard_id, id, statechart_id) values
                 (shard, machine_id, statechart)
@@ -20,7 +19,10 @@ BEGIN;
               insert into fsm.state_machine (shard_id, statechart_id) values
                 (shard, statechart)
               returning * into machine;
-          end if;
+        end if;
+
+        for initial in select * from fsm.get_initial_state(statechart)
+        loop
 
           insert into fsm.state_machine_state
             (shard_id, state_machine_id, statechart_id, state_id) values

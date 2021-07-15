@@ -3,7 +3,7 @@ BEGIN;
 
   \set shard 7000000001
   \set chart 9000000001
-  \i test/fixtures/machine_with_parents.sql
+  \i test/fixtures/machine_with_multiple_initials.sql
 
   select lives_ok(
      format($$ select fsm.start_machine(%s, %s) $$, :shard, :chart),
@@ -14,7 +14,11 @@ BEGIN;
   from fsm.state_machine
   where shard_id = :shard and statechart_id = :chart;
 
-  select is(state_id, 'initial', 'the initial state should be there')
+  select is(
+    array_agg(state_id),
+    array['binging','checking_bing','checking_google','googling','initial','research','searching'],
+    'the initial state should be there'
+  )
   from fsm.state_machine_state
   where shard_id = :shard and statechart_id = :chart;
 
