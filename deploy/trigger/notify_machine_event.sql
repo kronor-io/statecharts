@@ -17,6 +17,10 @@ BEGIN;
     end;
   $$ language plpgsql;
 
+  comment on function fsm.trig_notify_machine_event is $comment$
+      Creates a notification for an event in the "fsm_machine_events" channel.
+  $comment$;
+
   set client_min_messages TO warning;
   drop trigger if exists notify_machine_event on fsm.state_machine_event;
   reset client_min_messages;
@@ -27,5 +31,10 @@ BEGIN;
   referencing new table as new
   for each statement
   execute function fsm.trig_notify_machine_event();
+
+  comment on trigger notify_machine_event on fsm.state_machine_event is $comment$
+      On inserting a new event into the "fsm.state_machine_event" table, a
+      notification for an event in the "fsm_machine_events" channel is created.
+  $comment$;
 
 COMMIT;

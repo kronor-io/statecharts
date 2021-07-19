@@ -45,6 +45,11 @@ BEGIN;
   end;
   $$ language plpgsql;
 
+  comment on function fsm.trig_check_no_state_loops is $comment$
+      Checks that the compound states do not form a cycle. Compound states
+      should form a directed graph.
+  $comment$;
+
   set client_min_messages TO warning;
   drop trigger if exists check_no_state_loops_insert on fsm.state;
   drop trigger if exists check_no_state_loops_update on fsm.state;
@@ -57,11 +62,21 @@ BEGIN;
   for each statement
   execute function fsm.trig_check_no_state_loops();
 
+  comment on trigger check_no_state_loops_insert on fsm.state is $comment$
+      Checks that the compound states do not form a cycle. Compound states
+      should form a directed graph.
+  $comment$;
+
   create trigger check_no_state_loops_update
   after update
   on fsm.state
   referencing new table as changed
   for each statement
   execute function fsm.trig_check_no_state_loops();
+
+  comment on trigger check_no_state_loops_update on fsm.state is $comment$
+      Checks that the compound states do not form a cycle. Compound states
+      should form a directed graph.
+  $comment$;
 
 COMMIT;

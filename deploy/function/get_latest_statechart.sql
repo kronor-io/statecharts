@@ -16,4 +16,7 @@ BEGIN;
         parallel safe
         rows 1;
 
+    comment on function fsm.get_latest_statechart(text) is $comment$
+        Get the latest statechart of given name.
+    $comment$;
 COMMIT;

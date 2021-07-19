@@ -21,4 +21,9 @@ BEGIN;
         and child_s.parent_path <@ (select node_path from root)
   $$ language sql stable strict parallel safe;
 
+  comment on function fsm.get_initial_state(bigint) is $comment$
+      Get all initial states, when an initial state has children all of its
+      initial states are also returned.
+  $comment$;
+
 COMMIT;

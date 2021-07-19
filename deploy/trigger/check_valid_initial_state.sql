@@ -29,6 +29,11 @@ BEGIN;
     end;
   $$ language plpgsql;
 
+  comment on function fsm.trig_check_valid_initial_state is $comment$
+      Checks that there is only initial state per statechart. Only considers
+      initial states whose parent_id is null.
+  $comment$;
+
   set client_min_messages TO warning;
   drop trigger if exists check_valid_initial_state_insert on fsm.state;
   drop trigger if exists check_valid_initial_state_update on fsm.state;
@@ -42,6 +47,11 @@ BEGIN;
   for each statement
   execute function fsm.trig_check_valid_initial_state();
 
+  comment on trigger check_valid_initial_state_insert on fsm.state is $comment$
+      Checks that there is only initial state per statechart. Only considers
+      initial states whose parent_id is null.
+  $comment$;
+
   create trigger check_valid_initial_state_update
   after update
   on fsm.state
@@ -49,11 +59,21 @@ BEGIN;
   for each statement
   execute function fsm.trig_check_valid_initial_state();
 
+  comment on trigger check_valid_initial_state_update on fsm.state is $comment$
+      Checks that there is only initial state per statechart. Only considers
+      initial states whose parent_id is null.
+  $comment$;
+
   create trigger check_valid_initial_state_delete
   after delete
   on fsm.state
   referencing old table as changed
   for each statement
   execute function fsm.trig_check_valid_initial_state();
+
+  comment on trigger check_valid_initial_state_delete on fsm.state is $comment$
+      Checks that there is only initial state per statechart. Only considers
+      initial states whose parent_id is null.
+  $comment$;
 
 COMMIT;

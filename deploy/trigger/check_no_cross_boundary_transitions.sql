@@ -27,6 +27,11 @@ BEGIN;
     end;
   $$ language plpgsql;
 
+  comment on function fsm.trig_check_no_cross_boundary_transition is $comment$
+      This function checks that there are no transitions between states with
+      different parents in the "fsm.transition" table.
+  $comment$;
+
   set client_min_messages TO warning;
   drop trigger if exists check_no_cross_boundary_transitions_insert on fsm.transition;
   drop trigger if exists check_no_cross_boundary_transitions_update on fsm.transition;
@@ -39,11 +44,21 @@ BEGIN;
   for each statement
   execute function fsm.trig_check_no_cross_boundary_transition();
 
+  comment on trigger check_no_cross_boundary_transitions_insert on fsm.transition is $comment$
+      Checks that no transitions in between states with different parents are
+      inserted in the "fsm.transition" table.
+  $comment$;
+
   create trigger check_no_cross_boundary_transitions_update
   after update
   on fsm.transition
   referencing new table as changed
   for each statement
   execute function fsm.trig_check_no_cross_boundary_transition();
+
+  comment on trigger check_no_cross_boundary_transitions_update on fsm.transition is $comment$
+      Checks that no transitions in between states with different parents are
+      inserted in the "fsm.transition" table.
+  $comment$;
 
 COMMIT;
