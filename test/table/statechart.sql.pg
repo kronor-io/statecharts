@@ -11,6 +11,7 @@ BEGIN;
 
   select is(created_at, now(), 'created_at should have a default')
   from fsm.statechart
+  where created_at = now()
   limit 1;
 
   select throws_like($$execute insert_statechart('', 1::semver)$$,

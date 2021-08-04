@@ -3,7 +3,7 @@
 BEGIN;
 
   create or replace function fsm.start_machine(shard bigint, statechart bigint, initial_data jsonb default '{}', machine_id bigint default null)
-    returns setof fsm.state_machine as
+    returns fsm.state_machine as
     $$
       declare
         initial fsm.state%rowtype;
@@ -49,10 +49,9 @@ BEGIN;
               );
           end if;
 
-          return next machine;
         end loop;
 
-        return;
+        return machine;
       end
     $$ language plpgsql volatile;
 
