@@ -89,12 +89,12 @@ BEGIN;
   comment on table fsm.state_machine_event is
       'Queue of events that need to be processed for the state machine.';
 
-  comment on column fsm.state_machine_event.created_at $comment$
+  comment on column fsm.state_machine_event.created_at is $comment$
       The timestamp when this event was created. The timestamp should be
       before "handled_at".
   $comment$;
 
-  comment on column fsm.state_machine_event.handled_at $comment$
+  comment on column fsm.state_machine_event.handled_at is $comment$
       The timestamp when this event was handled. The timestamp should be
       after "created_at".
   $comment$;
