@@ -80,7 +80,7 @@ BEGIN;
   comment on trigger check_no_transition_for_final_update on fsm.transition is $comment$
       Checks that there are no transitions added from final states.
   $comment$;
-  
+
   create trigger check_no_transition_for_final_update
   after update
   on fsm.state
@@ -88,7 +88,7 @@ BEGIN;
   for each statement
   execute function fsm.trig_check_no_final_state_with_transition();
 
-  comment on trigger check_no_transition_for_final_udate on fsm.transition is $comment$
+  comment on trigger check_no_transition_for_final_update on fsm.transition is $comment$
       Checks that there are no states inserted with transitions from final states.
   $comment$;
 
