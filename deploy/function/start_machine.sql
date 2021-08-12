@@ -8,6 +8,9 @@ BEGIN;
       declare
         initial fsm.state%rowtype;
         machine fsm.state_machine%rowtype;
+        error_message text;
+        error_state text;
+        error_context text;
       begin
 
         if machine_id is not null
@@ -52,6 +55,21 @@ BEGIN;
         end loop;
 
         return machine;
+
+      exception when others then
+        get stacked diagnostics
+          error_message = message_text,
+          error_context = pg_exception_context,
+          error_state = returned_sqlstate;
+        raise exception '%',
+          format(
+            $e$Error while handling state machine event:
+              MESSAGE=%s
+              SQLSTATE=%s
+              %s
+            $e$
+            , error_message, error_state, error_context
+          );
       end
     $$ language plpgsql volatile;
 

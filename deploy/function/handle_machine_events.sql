@@ -3,9 +3,9 @@
 BEGIN;
 
 
-  set client_min_messages TO warning;
+ set client_min_messages TO warning;
   drop type if exists fsm_event_payload restrict;
-  reset client_min_messages;
+ reset client_min_messages;
 
   create type fsm_event_payload as
   ( shard_id bigint
@@ -25,6 +25,9 @@ BEGIN;
       state_transition record;
       a_source_state fsm.state%rowtype;
       a_target_state fsm.state%rowtype;
+      error_message text;
+      error_state text;
+      error_context text;
     begin
 
       -- First mark all pending events as handled and then select the set of source
@@ -204,8 +207,7 @@ BEGIN;
                 , state_transition.source_state->>'id'
                 , a_target_state.id
                 , 'on_entry'
-                )::fsm_event_payload
-            );
+                )::fsm_event_payload);
           end loop;
           -- target-entering}}}
 
@@ -236,7 +238,23 @@ BEGIN;
         end loop;
 
       end loop;
+
       return;
+
+    exception when others then
+      get stacked diagnostics
+        error_message = message_text,
+        error_context = pg_exception_context,
+        error_state = returned_sqlstate;
+      raise exception '%',
+        format(
+          $e$Error while handling state machine event:
+            MESSAGE=%s
+            SQLSTATE=%s
+            %s
+          $e$
+          , error_message, error_state, error_context
+        );
     end;
   $$ language plpgsql volatile strict;
 

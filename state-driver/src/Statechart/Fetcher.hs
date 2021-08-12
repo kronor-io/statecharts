@@ -32,32 +32,35 @@ runFetcher settings channel stateMachines =
   Control.Immortal.createWithLabel "fetcher" $
     \thread ->
       Control.Immortal.onUnexpectedFinish thread logException do
-        Exception.bracket acquire release fetch
+        Exception.bracket acquire2 release fetch
   where
-    acquire = do
-      dbOrError <- liftIO $ Hasql.Connection.acquire settings
-      case dbOrError of
-        Left e -> Exception.throwIO $ ConnectionError ("Unable to establish database connection: " <> show e)
-        Right db -> return db
+    acquire2 = do
+      db1OrError <- liftIO $ Hasql.Connection.acquire settings
+      db2OrError <- liftIO $ Hasql.Connection.acquire settings
+      case (db1OrError, db2OrError) of
+        (Left e, _) -> Exception.throwIO $ ConnectionError ("Unable to establish database connection: " <> show e)
+        (_, Left e) -> Exception.throwIO $ ConnectionError ("Unable to establish database connection: " <> show e)
+        (Right db1, Right db2) -> return (db1, db2)
 
-    release db = liftIO do
-      Hasql.Connection.release db
+    release (db1, db2) = liftIO do
+      Hasql.Connection.release db1
+      Hasql.Connection.release db2
 
-    fetch db = do
+    fetch (db1, db2) = do
       Colog.logInfo "Listening to machine events"
       isReadyVar <- newEmptyTMVarIO
       -- running in a different thread because we need to start the listener before
       -- we fetch old events, to ensure we don't miss any
       threadID <- async do
-        Statechart.Listener.runListener db isReadyVar channel stateMachines
+        Statechart.Listener.runListener db1 isReadyVar channel stateMachines
       link threadID
 
-      Colog.logInfo "Fetching pending events"
       -- we need to wait for the listener to begin its work before fetching pending events
       -- so that we leave no gap in between the time it starts and the time we fetch unhandled
       -- events.
       _ <- atomically $ takeTMVar isReadyVar
-      maybeMachines <- liftIO $ Hasql.Session.run Statechart.Session.getPendingMachines db
+      Colog.logInfo "Fetching pending events"
+      maybeMachines <- liftIO $ Hasql.Session.run Statechart.Session.getPendingMachines db2
 
       case maybeMachines of
         Left e -> do
@@ -65,10 +68,12 @@ runFetcher settings channel stateMachines =
           cancel threadID
           Exception.throwIO e
         Right pendingMachines -> do
+          Colog.logInfo $ "I found this many: " <> show (Vector.length pendingMachines)
           Metrics.counter "fetcher.pending_machines" (Vector.length pendingMachines)
           atomically do
             traverse_ (`ConcurrentSet.insert` stateMachines) pendingMachines
 
+      liftIO $ Hasql.Connection.release db2
       wait threadID
 
     logException (Left e) = do
