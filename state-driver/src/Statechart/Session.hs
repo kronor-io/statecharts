@@ -8,14 +8,14 @@ import Statechart.Transaction qualified
 
 handleMachineEvents :: StateMachine -> Hasql.Session.Session ()
 handleMachineEvents stateMachine =
-  Hasql.Transaction.transaction
-    Hasql.Transaction.Serializable
-    Hasql.Transaction.Write
-    (Statechart.Transaction.handleMachineEvents stateMachine)
+    Hasql.Transaction.transaction
+        Hasql.Transaction.Serializable
+        Hasql.Transaction.Write
+        (Statechart.Transaction.handleMachineEvents stateMachine)
 
 getPendingMachines :: Hasql.Session.Session (Data.Vector.Vector StateMachine)
 getPendingMachines =
-  Hasql.Transaction.transaction
-    Hasql.Transaction.ReadCommitted
-    Hasql.Transaction.Read
-    Statechart.Transaction.getPendingMachines
+    Hasql.Transaction.transaction
+        Hasql.Transaction.ReadCommitted
+        Hasql.Transaction.Read
+        Statechart.Transaction.getPendingMachines

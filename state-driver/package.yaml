@@ -78,6 +78,8 @@ executables:
     - '"-with-rtsopts=-N -T --nonmoving-gc"'
     dependencies:
     - state-driver
+    - optparse-simple
+    - hasql-optparse-applicative
 
 tests:
   state-driver-test:

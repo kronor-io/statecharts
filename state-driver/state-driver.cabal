@@ -22,7 +22,6 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
       Statechart
       Statechart.App
       Statechart.Fetcher
@@ -125,12 +124,14 @@ executable state-driver-exe
     , hashable
     , hasql
     , hasql-notifications
+    , hasql-optparse-applicative
     , hasql-pool
     , hasql-transaction
     , immortal
     , immortal-queue
     , list-t
     , monad-metrics
+    , optparse-simple
     , relude
     , state-driver
     , stm
