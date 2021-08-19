@@ -5,12 +5,12 @@ BEGIN;
   create or replace function fsm.trig_notify_machine_event() returns trigger as
   $$
     declare
-        event record;
+      event record;
     begin
 
       for event in select distinct shard_id, state_machine_id from new
       loop
-        perform pg_notify('fsm_machine_events', row_to_json(event)::text);
+        perform fsm.handle_machine_events(event.shard_id, event.state_machine_id);
       end loop;
 
       return null;
@@ -18,7 +18,7 @@ BEGIN;
   $$ language plpgsql;
 
   comment on function fsm.trig_notify_machine_event is $comment$
-      Creates a notification for an event in the "fsm_machine_events" channel.
+    Handles all of the newly inserted events for all affected state machines.
   $comment$;
 
   set client_min_messages TO warning;
@@ -33,8 +33,7 @@ BEGIN;
   execute function fsm.trig_notify_machine_event();
 
   comment on trigger notify_machine_event on fsm.state_machine_event is $comment$
-      On inserting a new event into the "fsm.state_machine_event" table, a
-      notification for an event in the "fsm_machine_events" channel is created.
+    Handles all of the newly inserted events for all affected state machines.
   $comment$;
 
 COMMIT;

@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(10);
+  select plan(11);
 
   \set shard 7000000001
   \set chart 9000000001
@@ -67,7 +67,8 @@ BEGIN;
   from (
       select name
       from fsm.state_machine_event
-      where shard_id = :shard and state_machine_id = :machine and handled_at is null
+      where shard_id = :shard and state_machine_id = :machine and handled_at is not null
+        and name ~ any(array['done.state.googling', 'done.state.got_google'])
       order by name
   ) c;
 
@@ -81,7 +82,7 @@ BEGIN;
 
   select is(
     array_agg(state_id)
-  , array['binging', 'googling', 'got_bing', 'got_google', 'searching']
+  , array['displaying']
   , 'The searching parallel state should have reached all final states'
   )
   from (
@@ -91,15 +92,30 @@ BEGIN;
       order by state_id
   ) c;
 
+  -- no pending events to handle
   select is(
       array_agg(name)
-    , array['done.state.binging', 'done.state.got_bing', 'done.state.searching']
-    , 'donde events up to serching should be raised'
+    , null
+    , 'all events should be handled'
   )
   from (
       select name
       from fsm.state_machine_event
       where shard_id = :shard and state_machine_id = :machine and handled_at is null
+      order by name
+  ) c;
+
+  -- check that the done events were triggered
+  select is(
+      array_agg(name)
+    , array['done.state.binging', 'done.state.got_bing', 'done.state.searching']
+    , 'done.state.got_google and googling should be raised'
+  )
+  from (
+      select name
+      from fsm.state_machine_event
+      where shard_id = :shard and state_machine_id = :machine and handled_at is not null
+        and name ~ any(array['done.state.binging', 'done.state.got_bing', 'done.state.searching'])
       order by name
   ) c;
 

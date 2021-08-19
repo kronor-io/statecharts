@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(34);
+  select plan(30);
 
   \set shard 7000000001
   \set chart 9000000001
@@ -19,6 +19,7 @@ BEGIN;
   create or replace function pg_temp.log_callback_execution(payload fsm_event_payload)
     returns void as
     $$
+    begin
         insert into pg_temp.callbacks_called
         (id, event, data, from_state, to_state, payload_type) values
         ( payload.machine_id
@@ -26,8 +27,9 @@ BEGIN;
         , payload.data
         , payload.from_state
         , payload.to_state
-        , payload.payload_type)
-    $$ language sql volatile;
+        , payload.payload_type);
+    end
+    $$ language plpgsql volatile;
 
 
   \i test/fixtures/composite_machine.sql
@@ -49,11 +51,6 @@ BEGIN;
   -- transition to the search state, which should activate all initial sub-states
 
   select fsm.notify_state_machine(:shard, :machine, 'search', '{"for": "search"}');
-
-  select lives_ok(
-    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
-    'handled a single simple event'
-  );
 
   select
       is(data, '{"for": "search"}'::jsonb, 'the data payload is the same for all')
@@ -102,11 +99,6 @@ BEGIN;
   -- Only get results from google now
   select fsm.notify_state_machine(:shard, :machine, 'google_results', '{"results": "google"}');
 
-  select lives_ok(
-    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
-    'handled a single simple event'
-  );
-
   select
       is(data, '{"results": "google"}'::jsonb, 'same google results or all callbacks')
   from callbacks_called
@@ -133,11 +125,6 @@ BEGIN;
   -- Get results from bing
   select fsm.notify_state_machine(:shard, :machine, 'bing_results', '{"results": "bing"}');
 
-  select lives_ok(
-    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
-    'handle the bing_results event'
-  );
-
   select
       is(data, '{"results": "bing"}'::jsonb, 'same bing results or all callbacks')
   from callbacks_called
@@ -156,20 +143,10 @@ BEGIN;
 
 
 
-
-
-
   -- clean the table to make the rest of the tests easier
   delete from callbacks_called;
 
-  -- The last transition should have generated a few done events
-  -- let's process them
-  select lives_ok(
-    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
-    'handle the done events'
-  );
-
-  select is(count(*), 6::bigint, 'there should be 8 logged callbacks')
+  select is(count(*), 6::bigint, 'there should be 6 logged callbacks')
   from callbacks_called
   where id = :machine;
 
