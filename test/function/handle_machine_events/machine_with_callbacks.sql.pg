@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(30);
+  select plan(27);
 
   \set shard 7000000001
   \set chart 9000000001
@@ -139,39 +139,6 @@ BEGIN;
       is(to_state, 'got_bing', 'the from state should be got_bing')
   from callbacks_called
   where id = :machine and event = 'bing_results';
-
-
-
-
-  -- clean the table to make the rest of the tests easier
-  delete from callbacks_called;
-
-  select is(count(*), 6::bigint, 'there should be 6 logged callbacks')
-  from callbacks_called
-  where id = :machine;
-
-  select
-    is(
-      array_agg(from_state)
-    , array['binging','googling','got_bing','got_google','searching']
-    , 'only active states should have fired the on_exit callback'
-    )
-  from
-      (select from_state from callbacks_called
-        where id = :machine
-          and payload_type = 'on_exit'
-        order by from_state) c;
-
-
-  select
-    is(
-      array_agg(to_state)
-    , array['displaying']
-    , 'only displaying should have executed the on_entry callback'
-    )
-  from callbacks_called
-  where id = :machine
-    and payload_type = 'on_entry';
 
   select finish();
 ROLLBACK;
