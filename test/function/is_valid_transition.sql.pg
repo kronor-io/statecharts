@@ -1,0 +1,46 @@
+BEGIN;
+  select plan(9);
+
+    -- set var
+  \set shard 7000000001
+  \set chart 9000000001
+  \set machine 80000000000
+
+  \i test/fixtures/machine_with_parents.sql
+
+  select fsm.start_machine(:shard, :chart, machine_id := :machine);
+
+  select is(is_valid, true, 'the search transition should be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'search') is_valid;
+
+  select is(is_valid, false, 'the lol transition should not be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'lol') as is_valid;
+
+  select is(is_valid, false, 'the google_results transition should not be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'google_results') as is_valid;
+
+  select fsm.notify_state_machine(:shard, :machine, 'search');
+
+  select is(is_valid, false, 'the search transition should be valid anymore')
+  from fsm.is_valid_transition(:shard, :machine, 'search') is_valid;
+
+  select is(is_valid, true, 'the google_results transition should now be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'google_results') is_valid;
+
+  select is(is_valid, true, 'the done.state.searching transition should also be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'done.state.searching') is_valid;
+
+  -- lets enter a child state
+  select fsm.notify_state_machine(:shard, :machine, 'google_results');
+
+  select is(is_valid, false, 'the google_results transition should no longer be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'google_results') is_valid;
+
+  select is(is_valid, true, 'the done.state.searching transition should still be valid')
+  from fsm.is_valid_transition(:shard, :machine, 'done.state.searching') is_valid;
+
+  select is(is_valid, true, 'the bing_results transition should stay valid')
+  from fsm.is_valid_transition(:shard, :machine, 'bing_results') is_valid;
+
+  select finish();
+ROLLBACK;
