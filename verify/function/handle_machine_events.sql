@@ -2,6 +2,6 @@
 
 BEGIN;
 
-  select  has_function_privilege('fsm.handle_machine_events(bigint)', 'execute');
+  select  has_function_privilege('fsm.handle_machine_events(bigint, bigint)', 'execute');
 
 ROLLBACK;
