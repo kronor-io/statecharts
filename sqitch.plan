@@ -20,3 +20,4 @@ function/get_latest_statechart 2021-07-05T13:42:38Z root <root@aa3dfe7c2fa8> # A
 function/start_machine_with_latest_statechart 2021-07-05T15:13:07Z root <root@aa3dfe7c2fa8> # Add a function to start a new machine with the latest statechart version
 function/notify_state_machine 2021-07-07T13:42:36Z root <root@aa3dfe7c2fa8> # Add a function to insert events for a state machine
 function/is_valid_transition 2021-08-19T13:05:53Z root <root@b3b97d2b6355> # Add function to check if the transition is valid
+function/already_cancelled 2021-08-27T18:24:03Z root <root@7cf7634c0801> # Function for checking if the machine is already in cancelled state
