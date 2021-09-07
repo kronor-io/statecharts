@@ -81,7 +81,7 @@ BEGIN;
       where statechart_id = %s
         and id = 'errored';
     $$, :chart),
-    '%cannot add transitions from final states:%',
+    '%cannot add states with transitions from final states:%',
     'should not be possible to add a transition from a final state when editing the state'
   );
 
