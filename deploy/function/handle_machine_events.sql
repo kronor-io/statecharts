@@ -28,6 +28,7 @@ BEGIN;
       error_message text;
       error_state text;
       error_context text;
+      error_detail text;
     begin
 
       -- First mark all pending events as handled and then select the set of source
@@ -245,16 +246,13 @@ BEGIN;
       get stacked diagnostics
         error_message = message_text,
         error_context = pg_exception_context,
+        error_detail = pg_exception_detail,
         error_state = returned_sqlstate;
-      raise exception '%',
-        format(
-          $e$Error while handling state machine event:
-            MESSAGE=%s
-            SQLSTATE=%s
-            %s
-          $e$
-          , error_message, error_state, error_context
-        );
+      raise exception
+      using errcode = error_state,
+            message = error_message,
+            detail = error_detail,
+            hint = format($e$Error while handling state machine event: %s$e$, error_context);
     end;
   $$ language plpgsql volatile strict;
 

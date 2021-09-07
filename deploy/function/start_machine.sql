@@ -11,6 +11,7 @@ BEGIN;
         error_message text;
         error_state text;
         error_context text;
+        error_detail text;
       begin
 
         if machine_id is not null
@@ -60,16 +61,13 @@ BEGIN;
         get stacked diagnostics
           error_message = message_text,
           error_context = pg_exception_context,
+          error_detail = pg_exception_detail,
           error_state = returned_sqlstate;
-        raise exception '%',
-          format(
-            $e$Error while handling state machine event:
-              MESSAGE=%s
-              SQLSTATE=%s
-              %s
-            $e$
-            , error_message, error_state, error_context
-          );
+        raise exception
+          using errcode=error_state,
+            message=error_message,
+            detail = error_detail,
+            hint=format('Error while handling state machine event: %s', error_context);
       end
     $$ language plpgsql volatile;
 
