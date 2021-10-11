@@ -1,0 +1,109 @@
+name: statechart-sdk
+version: 0.1.0.0
+license: AllRightsReserved
+author: "Kronor.io"
+maintainer: "dev@kronor.io"
+copyright: "2021 Kronor"
+
+description: Statechart SDK (Statechart definitions and build tool)
+
+default-extensions:
+  - NoImplicitPrelude
+  - ApplicativeDo
+  - BangPatterns
+  - BinaryLiterals
+  - BlockArguments
+  - ConstraintKinds
+  - DataKinds
+  - DefaultSignatures
+  - DeriveAnyClass
+  - DeriveDataTypeable
+  - DeriveFoldable
+  - DeriveFunctor
+  - DeriveGeneric
+  - DeriveTraversable
+  - DerivingStrategies
+  - DerivingVia
+  - DoAndIfThenElse
+  - DuplicateRecordFields
+  - EmptyDataDecls
+  - EmptyDataDeriving
+  - ExistentialQuantification
+  - FlexibleContexts
+  - FlexibleInstances
+  - FunctionalDependencies
+  - GADTs
+  - GeneralizedNewtypeDeriving
+  - ImportQualifiedPost
+  - InstanceSigs
+  - KindSignatures
+  - LambdaCase
+  - MultiParamTypeClasses
+  - MultiWayIf
+  - NamedFieldPuns
+  - NoImplicitPrelude
+  - OverloadedStrings
+  - PartialTypeSignatures
+  - PatternGuards
+  - PatternSynonyms
+  - PolyKinds
+  - RankNTypes
+  - RecordWildCards
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - StrictData
+  - TupleSections
+  - TypeFamilies
+  - TypeApplications
+  - TypeSynonymInstances
+  - ViewPatterns
+  - QuasiQuotes
+
+dependencies:
+  - base >= 4.11 && < 10
+  - rio >= 0.1.12.0
+  - text
+  - xml-conduit
+  - template-haskell
+  - casing
+  - ghc-prim
+  - containers
+  - bytestring
+  - file-embed
+  - string-interpolate
+  - pretty
+  - freer-simple
+  - aeson
+  - filepath
+  - directory
+  - hashable
+
+library:
+  source-dirs:
+    - src
+    - dist/haskell # this may need to be commented out in case there is a bug in haskell code generation
+  ghc-options:
+    - -Wall
+  dependencies:
+    - xml-conduit
+    - template-haskell
+    - casing
+    - ghc-prim
+    - containers
+    - bytestring
+    - file-embed
+    - string-interpolate
+    - hspec
+
+tests:
+  statechart-sdk-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - statechart-sdk
+      - hspec
+      - hspec-discover

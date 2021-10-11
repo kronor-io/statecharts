@@ -1,0 +1,73 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              version="1.0"
+              initial="settling">
+    <state id="settling" name="wating for full settlement">
+        <initial>
+            <transition target="in_progress"/>
+        </initial>
+        <state id="in_progress" name="waiting for minimum payment">
+            <initial>
+                <transition target="created"/>
+            </initial>
+            <state id="created" name="created">
+                <transition event="invoice.time.due" target="due_date"/>
+                <onentry>
+                    <script src="invoice.created_action" />
+                </onentry>
+            </state>
+            <state id="due_date" name="due date">
+                <transition event="invoice.time.reminder1" target="reminder1"/>
+                <onentry>
+                    <script src="invoice.due_action" />
+                </onentry>
+            </state>
+            <state id="reminder1" name="first reminder date">
+                <transition event="invoice.time.reminder2" target="reminder2"/>
+                <onentry>
+                    <script src="invoice.reminder1_action" />
+                </onentry>
+            </state>
+            <state id="reminder2" name="second reminder date">
+                <transition event="invoice.time.debt_collection" target="debt_collection_date"/>
+                <onentry>
+                    <script src="invoice.reminder2_action" />
+                </onentry>
+            </state>
+            <final id="debt_collection_date" name="debt collection date">
+                <onentry>
+                    <script src="invoice.debt_collection_action" />
+                </onentry>
+            </final>
+            <transition event="invoice.pay.enough" target="minimum_payment"/>
+        </state>
+        <state id="minimum_payment" name="received minimum payment">
+            <initial>
+                <transition target="paid_more_than_min"/>
+            </initial>
+            <state id="paid_more_than_min" name="paid enough to transfer to account">
+                <onentry>
+                    <script src="invoice.paid_more_than_min_action" />
+                </onentry>
+                <transition event="invoice.time.due" target="transferring_to_account"/>
+                <transition event="invoice.time.past_due" target="transferring_to_account"/>
+            </state>
+            <final id="transferring_to_account" name="starting the transfer to account">
+                <onentry>
+                    <script src="invoice.transferring_to_account_action" />
+                </onentry>
+            </final>
+        </state>
+        <transition event="done.state.debt_collection_date" target="debt_collection"/>
+        <transition event="done.state.minimum_payment" target="transferred_to_account"/>
+        <transition event="invoice.settle" target="settled"/>
+    </state>
+    <final id="debt_collection" name="sent to debt collection">
+    </final>
+    <final id="transferred_to_account" name="transferred to account">
+    </final>
+    <final id="settled" name="settled">
+        <onentry>
+            <script src="invoice.settled_action" />
+        </onentry>
+    </final>
+</scxml>
