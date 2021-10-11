@@ -1,15 +1,17 @@
 FROM postgres:13
 
 RUN apt-get -qq update \
-    && apt-get -qq --no-install-recommends install less libperl5.28 perl-doc nano ca-certificates git \
-       libpq5 postgresql-client \
-       libtap-parser-sourcehandler-pgtap-perl postgresql-13-pgtap \
-       pgxnclient build-essential postgresql-server-dev-13 \
-       sqitch \
+    && apt-get -qq --no-install-recommends install \
+    # required by squitch
+    less libperl5.32 perl-doc nano ca-certificates git \
+    libpq5 postgresql-client-13 \
+    # required by pgtap
+    libtap-parser-sourcehandler-pgtap-perl postgresql-13-pgtap \
+    # required by pgxn
+    pgxnclient build-essential postgresql-server-dev-13 \
+    sqitch \
     && apt-cache pkgnames | grep libmagic | xargs apt-get purge -qq \
     && apt-get clean \
-    # Let libcurl find certs. https://stackoverflow.com/q/3160909/79202
-    && mkdir -p /etc/pki/tls && ln -s /etc/ssl/certs /etc/pki/tls/ \
     && rm -rf /var/cache/apt/* /var/lib/apt/lists/*
 
 RUN pgxn install semver
