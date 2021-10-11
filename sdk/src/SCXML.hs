@@ -2,7 +2,7 @@
 module SCXML where
 
 import Data.Map.Strict qualified as Map
-import Data.Text qualified as T
+import RIO.Text qualified as T
 import RIO
 import RIO.ByteString.Lazy qualified as LBS
 import Text.XML

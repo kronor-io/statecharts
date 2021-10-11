@@ -62,38 +62,21 @@ default-extensions:
 dependencies:
   - base >= 4.11 && < 10
   - rio >= 0.1.12.0
-  - text
-  - xml-conduit
   - template-haskell
-  - casing
-  - ghc-prim
-  - containers
-  - bytestring
-  - file-embed
   - string-interpolate
-  - pretty
-  - freer-simple
-  - aeson
-  - filepath
-  - directory
-  - hashable
 
 library:
   source-dirs:
     - src
-    - dist/haskell # this may need to be commented out in case there is a bug in haskell code generation
   ghc-options:
     - -Wall
   dependencies:
     - xml-conduit
-    - template-haskell
     - casing
-    - ghc-prim
     - containers
     - bytestring
-    - file-embed
-    - string-interpolate
-    - hspec
+    - text
+    - aeson
 
 tests:
   statechart-sdk-test:
@@ -107,3 +90,5 @@ tests:
       - statechart-sdk
       - hspec
       - hspec-discover
+      - directory
+      - file-embed

@@ -1,7 +1,7 @@
 module Types where
 
 import Data.Aeson
-import Data.Text qualified as T
+import RIO.Text qualified as T
 import RIO
 import RIO.List (nub)
 
@@ -136,14 +136,10 @@ data Chart s e = Chart
     }
     deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
-instance (Hashable s, Hashable e) => Hashable (Chart s e)
-
 data Content e
     = Script Text -- TODO ActionName
     | Raise e
     deriving (Show, Eq, Generic, ToJSON, FromJSON, Functor)
-
-instance (Hashable e) => Hashable (Content e)
 
 data State s e
     = NormalState
@@ -178,13 +174,10 @@ data State s e
         }
     deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
-instance (Hashable s, Hashable e) => Hashable (State s e)
-
+-- | Also known as an "event". It connects one state to other in a specific direction;
 data Transition s e = Transition
     { event' :: e
     , source :: s
     , target :: s
     }
     deriving (Show, Eq, Generic, ToJSON, FromJSON)
-
-instance (Hashable s, Hashable e) => Hashable (Transition s e)
