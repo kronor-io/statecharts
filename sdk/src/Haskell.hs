@@ -1,6 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
-
-module Haskell where
+-- | This module is used to generate Haskell code from a chart.
+module Haskell (genCodeFromChart,genCodeFromFile) where
 
 import Data.ByteString.Lazy qualified as LBS
 import Data.List (foldl1)
@@ -10,44 +9,25 @@ import RIO.Text qualified as T
 import SCXML
 import Text.Casing
 import Types
+import Helpers
 
-genCode' :: Text -> Chart StateName EventName -> Q [Dec]
-genCode' flowName doc = do
+genCodeFromChart :: Text -> Chart StateName EventName -> Q [Dec]
+genCodeFromChart flowName doc = do
     typesDec <- genTypesFromChart flowName doc
     variableDec <- genChartStructure flowName doc
     return $ typesDec <> variableDec
 
-genCode :: Text -> ByteString -> Q [Dec]
-genCode flowName x = do
-    let doc_ = SCXML.parse (LBS.fromStrict x)
+parseAndGen :: Text -> ByteString -> Q [Dec]
+parseAndGen flowName raw = do
+    let doc_ = SCXML.parse (LBS.fromStrict raw)
     case doc_ of
         Left e -> error $ "GEN CODE: " <> show e
-        Right doc -> genCode' flowName doc
+        Right doc -> genCodeFromChart flowName doc
 
 genCodeFromFile :: Text -> Text -> Q [Dec]
 genCodeFromFile flowName (T.unpack -> path) = do
     x <- runIO (LBS.readFile path)
-    genCode flowName (LBS.toStrict x)
-
-nameC :: String -> Type
-nameC = ConT . mkName
-
-nameE :: String -> Exp
-nameE = ConE . mkName
-
-nShow :: Type
-nShow = nameC "Show"
-
-nEq :: Type
-nEq = nameC "Eq"
-
-nOrd :: Type
-nOrd = nameC "Ord"
-
-type FlowName = Text
-
-applyExpression :: [Exp] -> Exp
-applyExpression = foldl1 AppE
+    parseAndGen flowName (LBS.toStrict x)
 
 -- | Generates the datatype and instances for a flows state,
 -- state names must be in snake_case
@@ -193,3 +173,28 @@ genStateDec flowName state =
             , onentryExp
             , onexitExp
             ]
+
+-------------
+-- HELPERS --
+-------------
+
+nameC :: String -> Type
+nameC = ConT . mkName
+
+nameE :: String -> Exp
+nameE = ConE . mkName
+
+nShow :: Type
+nShow = nameC "Show"
+
+nEq :: Type
+nEq = nameC "Eq"
+
+nOrd :: Type
+nOrd = nameC "Ord"
+
+type FlowName = Text
+
+applyExpression :: [Exp] -> Exp
+applyExpression = foldl1 AppE
+

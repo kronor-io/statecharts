@@ -1,9 +1,12 @@
-module SQL where
+-- | This module contains functions for going from charts to sql files.
+-- Eventually it should be done with pretty printers to make it more robust (also pretty)
+module SQL (GenConfig(..),gen) where
 
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
 import RIO
 import Types
+import Helpers
 
 -- | Configuration for the generation.
 data GenConfig = GenConfig
@@ -105,6 +108,7 @@ str a = [i|'#{a}'|]
 nul :: Text
 nul = "null"
 
+-- can be removed
 head_ :: [a] -> Maybe a
 head_ [] = Nothing
 head_ [x] = Just x

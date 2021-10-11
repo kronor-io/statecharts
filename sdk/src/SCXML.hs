@@ -1,5 +1,5 @@
 -- | This is the parser for the SCXML file format.
-module SCXML where
+module SCXML (parse,parseRoot) where
 
 import Data.Map.Strict qualified as Map
 import RIO.Text qualified as T

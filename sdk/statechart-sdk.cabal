@@ -16,6 +16,7 @@ build-type:     Simple
 library
   exposed-modules:
       Haskell
+      Helpers
       SCXML
       SQL
       Types
