@@ -1,0 +1,33 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - master
+
+name: Tests
+
+jobs:
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.pull_request.draft == false
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Build Database
+      run: |
+        set -ex
+        docker-compose up -d postgres
+        _dev/wait_for.sh 5432
+        timeout 1m _dev/wait_for_migrations.sh
+        docker-compose exec -T postgres sqitch verify
+
+    - name: Run Tests
+      run: |
+        docker-compose exec -T postgres pg_prove test/
