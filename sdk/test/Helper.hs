@@ -10,10 +10,10 @@ module Helper (
     shouldReturn,
     pending,
     module RIO,
-    module Types,
+    module Statechart.Types,
 ) where
 
 import Data.String.Interpolate
 import RIO
+import Statechart.Types
 import Test.Hspec
-import Types

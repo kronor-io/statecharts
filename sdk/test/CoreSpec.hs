@@ -7,7 +7,7 @@ import Plugin.Haskell.PurchaseFlow
 import RIO.ByteString qualified as BS
 import RIO.Map qualified as M
 import RIO.Text qualified as T
-import SQL qualified
+import Statechart.CodeGen.SQL qualified as SQL
 import System.Directory
 
 spec :: Spec

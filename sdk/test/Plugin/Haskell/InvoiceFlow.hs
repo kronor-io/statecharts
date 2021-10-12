@@ -6,9 +6,10 @@ module Plugin.Haskell.InvoiceFlow where
 
 import Data.FileEmbed
 import Language.Haskell.TH.Syntax (liftString)
-import Haskell
 import RIO
-import Types
+import Statechart.CodeGen.Haskell
+import Statechart.Types
 
-genCodeFromFile "invoice_flow"
+genCodeFromFile
+    "invoice_flow"
     $(makeRelativeToProject "test/Plugin/SCXML/invoice_flow.scxml" >>= liftString)

@@ -6,9 +6,10 @@ module Plugin.Haskell.PurchaseFlow where
 
 import Data.FileEmbed
 import Language.Haskell.TH.Syntax (liftString)
-import Haskell
 import RIO
-import Types
+import Statechart.CodeGen.Haskell
+import Statechart.Types
 
-genCodeFromFile "purchase_flow"
+genCodeFromFile
+    "purchase_flow"
     $(makeRelativeToProject "test/Plugin/SCXML/purchase_flow.scxml" >>= liftString)
