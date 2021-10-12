@@ -1,12 +1,12 @@
 -- | This module contains functions for going from charts to sql files.
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
-module SQL (GenConfig(..),gen) where
+module Statechart.CodeGen.SQL (GenConfig (..), gen) where
 
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
 import RIO
-import Types
-import Helpers
+import Statechart.Helpers
+import Statechart.Types
 
 -- | Configuration for the generation.
 data GenConfig = GenConfig

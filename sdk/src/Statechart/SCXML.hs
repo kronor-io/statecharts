@@ -1,14 +1,14 @@
 -- | This is the parser for the SCXML file format.
-module SCXML (parse,parseRoot) where
+module Statechart.SCXML (parse, parseRoot) where
 
 import Data.Map.Strict qualified as Map
-import RIO.Text qualified as T
 import RIO
 import RIO.ByteString.Lazy qualified as LBS
+import RIO.Text qualified as T
+import Statechart.Types
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
-import Types
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)

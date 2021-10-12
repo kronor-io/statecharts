@@ -1,9 +1,8 @@
-module Types where
+module Statechart.Types where
 
 import Data.Aeson
-import RIO.Text qualified as T
 import RIO
-import RIO.List (nub)
+import RIO.Text qualified as T
 
 -- TODO This need to be reviewed and simplified moving foward.
 
@@ -21,16 +20,19 @@ newtype EventName = EventName Text deriving (Eq, Show)
 instance AsText EventName where
     fromText = return . EventName
     toText (EventName n) = n
+
 instance IsString EventName where
     fromString = unsafeEr . fromText . T.pack
 
 newtype Version = Version (Int, Int)
     deriving (Generic)
     deriving newtype (Eq)
+
 instance Show Version where
     show (Version (n, m)) = show n <> "." <> show m
 
 instance FromJSON Version
+
 instance ToJSON Version
 
 instance Hashable Version
@@ -44,7 +46,9 @@ instance AsText Version where
 
 newtype ChartName = ChartName Text
     deriving (Eq, Show, Ord, Generic)
+
 instance FromJSON ChartName
+
 instance ToJSON ChartName
 
 class AsText a where
@@ -113,4 +117,3 @@ unsafeEr :: Either Text a -> a
 unsafeEr = \case
     Left l -> error . T.unpack $ "UnsafeEr: " <> l
     Right r -> r
-

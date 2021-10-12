@@ -1,10 +1,8 @@
-module Helpers where
+module Statechart.Helpers where
 
-import Data.Aeson
-import RIO.Text qualified as T
 import RIO
 import RIO.List (nub)
-import Types
+import Statechart.Types
 
 -- TODO organize and delete the functions that are not been used anymore.
 

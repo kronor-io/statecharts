@@ -1,15 +1,15 @@
 -- | This module is used to generate Haskell code from a chart.
-module Haskell (genCodeFromChart,genCodeFromFile) where
+module Statechart.CodeGen.Haskell (genCodeFromChart, genCodeFromFile) where
 
 import Data.ByteString.Lazy qualified as LBS
 import Data.List (foldl1)
 import Language.Haskell.TH
 import RIO
 import RIO.Text qualified as T
-import SCXML
+import Statechart.Helpers
+import Statechart.SCXML qualified as SCXML
+import Statechart.Types as Types
 import Text.Casing
-import Types
-import Helpers
 
 genCodeFromChart :: Text -> Chart StateName EventName -> Q [Dec]
 genCodeFromChart flowName doc = do
@@ -197,4 +197,3 @@ type FlowName = Text
 
 applyExpression :: [Exp] -> Exp
 applyExpression = foldl1 AppE
-

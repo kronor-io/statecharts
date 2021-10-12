@@ -15,11 +15,11 @@ build-type:     Simple
 
 library
   exposed-modules:
-      Haskell
-      Helpers
-      SCXML
-      SQL
-      Types
+      Statechart.CodeGen.Haskell
+      Statechart.CodeGen.SQL
+      Statechart.Helpers
+      Statechart.SCXML
+      Statechart.Types
   other-modules:
       Paths_statechart_sdk
   hs-source-dirs:
