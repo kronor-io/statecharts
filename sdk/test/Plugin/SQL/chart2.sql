@@ -1,4 +1,4 @@
--- Deploy kronor:statechart/invoice_flow to pg
+-- Deploy kronor:statechart/chart2 to pg
 
 -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
@@ -7,7 +7,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('invoice_flow', 0.1::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('chart2', 0.1::semver) returning id into chart;
 insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
 (chart, 'settling', 'wating for full settlement', null, true, false, null, null),
 (chart, 'debt_collection', 'sent to debt collection', null, false, true, null, null),

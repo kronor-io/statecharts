@@ -1,4 +1,4 @@
--- Deploy kronor:statechart/purchase_flow to pg
+-- Deploy kronor:statechart/chart1 to pg
 
 -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
@@ -7,7 +7,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('purchase_flow', 0.1::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('chart1', 0.1::semver) returning id into chart;
 insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
 (chart, 'assessing', 'risk assessing', null, true, false, null, null),
 (chart, 'waiting_for_capture', 'waiting for capture', null, false, false, null, null),

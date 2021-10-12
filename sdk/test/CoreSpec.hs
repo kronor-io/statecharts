@@ -1,9 +1,9 @@
 module CoreSpec (spec) where
 
 import Helper
-import Plugin.Haskell.InvoiceFlow
-import Plugin.Haskell.PaymentFlow
-import Plugin.Haskell.PurchaseFlow
+import Plugin.Haskell.Chart1
+import Plugin.Haskell.Chart2
+import Plugin.Haskell.Chart3
 import RIO.ByteString qualified as BS
 import RIO.Map qualified as M
 import RIO.Text qualified as T
@@ -12,9 +12,9 @@ import System.Directory
 
 spec :: Spec
 spec = do
-    runSpec "purchase_flow" purchaseFlow
-    runSpec "invoice_flow" invoiceFlow
-    runSpec "payment_flow" paymentFlow
+    runSpec "chart1" chart1
+    runSpec "chart2" chart2
+    runSpec "chart3" chart3
 
 runSpec :: (AsText a, AsText b, Eq a) => Text -> Chart a b -> Spec
 runSpec name y = do
