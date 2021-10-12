@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+    </style>
+    <link rel="stylesheet" href="css/forceLayout.css">
+    <link rel="stylesheet" href="css/tipsy.css">
+</head>
+
+<body>
+    <object hidden id="invoice_flow" data="invoice_flow.scxml"></object>
+    <script src="js/d3.min.js"></script>
+    <script src="js/jquery.min.js"></script>
+    <script src="js/q.js"></script>
+    <script src="js/lodash.js"></script>
+    <script src="js/backbone.js"></script>
+    <script src="js/async.js"></script>
+    <script src="js/klay.js"></script>
+    <script src="js/forceLayout.js"></script>
+    <script src="js/jquery.tipsy.js"></script>
+    <script src="js/data.js"></script>
+    <script>
+        (function () {
+            'use strict';
+            Q.longStackSupport = true;
+            var debug = false;
+            var layout, createLayout;
+            var currentState = '';
+            scxml.forEach(ready);
+
+            function invokeLayout(options) {
+                createLayout = function () {
+                    layout = new forceLayout.Layout(_.extend({
+                        debug: debug
+                    }, options));
+                    layout.initialized
+                        .catch(function (err) {
+                            console.log(err);
+                            console.log(err.stack);
+                            $(layout.el).replaceWith("Error: " + err.message);
+                        })
+                        .done();
+                    window.layout = layout;
+                }
+                createLayout();
+            }
+
+
+            function ready(xml) {
+                var parent = $('<div style="width:95%;height:50%;border:solid 1px black;box-sizing: border-box;overflow: hidden;">')[0];
+                var title = document.createElement('h3');
+                title.setAttribute('style', 'text-align:center;')
+                title.innerHTML = xml.name;
+                parent.appendChild(title);
+                $('body').append(parent);
+                invokeLayout({ parent: parent, doc: parse(), currentState: currentState });
+
+                function parse() {
+                    const parser = new window.DOMParser();
+                    const doc = parser.parseFromString(xml.data, 'text/xml');
+
+                    const initState = document.createElement('state');
+                    initState.innerHTML = `<transition target="${doc.documentElement.getAttribute('initial')}"/>`;
+                    initState.setAttribute("id", "_init");
+                    doc.documentElement.appendChild(initState);
+
+                    doc.documentElement.setAttribute('initial', '_init');
+                    return doc;
+                }
+
+
+                var css;
+                $.get('forceLayout.css', function (resp) {
+                    css = resp;
+                });
+
+                function fit() {
+                    layout.fit();
+                }
+
+
+                fit();
+            }
+        })();
+    </script>
+</body>
+
+</html>
