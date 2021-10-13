@@ -1,73 +1,73 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
               version="1.0"
-              initial="settling">
-    <state id="settling" name="wating for full settlement">
+              initial="s1">
+    <state id="s1" name="s1n">
         <initial>
-            <transition target="in_progress"/>
+            <transition target="s2"/>
         </initial>
-        <state id="in_progress" name="waiting for minimum payment">
+        <state id="s2" name="s2n">
             <initial>
-                <transition target="created"/>
+                <transition target="s3"/>
             </initial>
-            <state id="created" name="created">
-                <transition event="invoice.time.due" target="due_date"/>
+            <state id="s3" name="s3n">
+                <transition event="foo.ev10" target="s4"/>
                 <onentry>
-                    <script src="invoice.created_action" />
+                    <script src="table1.action1" />
                 </onentry>
             </state>
-            <state id="due_date" name="due date">
-                <transition event="invoice.time.reminder1" target="reminder1"/>
+            <state id="s4" name="s4n">
+                <transition event="foo.ev9" target="s5"/>
                 <onentry>
-                    <script src="invoice.due_action" />
+                    <script src="table1.action2" />
                 </onentry>
             </state>
-            <state id="reminder1" name="first reminder date">
-                <transition event="invoice.time.reminder2" target="reminder2"/>
+            <state id="s5" name="s5n">
+                <transition event="foo.ev8" target="s6"/>
                 <onentry>
-                    <script src="invoice.reminder1_action" />
+                    <script src="table1.action3" />
                 </onentry>
             </state>
-            <state id="reminder2" name="second reminder date">
-                <transition event="invoice.time.debt_collection" target="debt_collection_date"/>
+            <state id="s6" name="s6n">
+                <transition event="foo.abc7" target="s7"/>
                 <onentry>
-                    <script src="invoice.reminder2_action" />
+                    <script src="table1.action4" />
                 </onentry>
             </state>
-            <final id="debt_collection_date" name="debt collection date">
+            <final id="s7" name="s7n">
                 <onentry>
-                    <script src="invoice.debt_collection_action" />
+                    <script src="table1.action5" />
                 </onentry>
             </final>
-            <transition event="invoice.pay.enough" target="minimum_payment"/>
+            <transition event="foo.abc6" target="s8"/>
         </state>
-        <state id="minimum_payment" name="received minimum payment">
+        <state id="s8" name="s8n">
             <initial>
-                <transition target="paid_more_than_min"/>
+                <transition target="s9"/>
             </initial>
-            <state id="paid_more_than_min" name="paid enough to transfer to account">
+            <state id="s9" name="s9n">
                 <onentry>
-                    <script src="invoice.paid_more_than_min_action" />
+                    <script src="table1.action7" />
                 </onentry>
-                <transition event="invoice.time.due" target="transferring_to_account"/>
-                <transition event="invoice.time.past_due" target="transferring_to_account"/>
+                <transition event="foo.abc5" target="s10"/>
+                <transition event="foo.abc4" target="s10"/>
             </state>
-            <final id="transferring_to_account" name="starting the transfer to account">
+            <final id="s10" name="s10n">
                 <onentry>
-                    <script src="invoice.transferring_to_account_action" />
+                    <script src="table1.action6" />
                 </onentry>
             </final>
         </state>
-        <transition event="done.state.debt_collection_date" target="debt_collection"/>
-        <transition event="done.state.minimum_payment" target="transferred_to_account"/>
-        <transition event="invoice.settle" target="settled"/>
+        <transition event="bar.abc3" target="s11"/>
+        <transition event="bar.abc2" target="s12"/>
+        <transition event="foo.abc1" target="s13"/>
     </state>
-    <final id="debt_collection" name="sent to debt collection">
+    <final id="s11" name="s11n">
     </final>
-    <final id="transferred_to_account" name="transferred to account">
+    <final id="s12" name="s12n">
     </final>
-    <final id="settled" name="settled">
+    <final id="s13" name="s13n">
         <onentry>
-            <script src="invoice.settled_action" />
+            <script src="table1.action11" />
         </onentry>
     </final>
 </scxml>
