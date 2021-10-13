@@ -1,0 +1,72 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              version="1.0"
+              initial="s1">
+  <state id="s1" name="s1n">
+    <transition event="ev1" target="s16"/>
+    <transition event="ev2" target="s5"/>
+    <initial>
+      <transition target="s2"/>
+    </initial>
+    <state id="s2" name="s2n">
+      <transition event="ev3" target="s3"/>
+    </state>
+    <state id="s3" name="s3n">
+      <transition event="ev4" target="s4"/>
+    </state>
+    <final id="s4" name="s4n">
+      <onentry>
+        <script src="table1.action" />
+      </onentry>
+    </final>
+  </state>
+  <state id="s5" name="s5n">
+    <transition event="ev5" target="s10"/>
+    <initial>
+      <transition target="s6"/>
+    </initial>
+    <state id="s6" name="s6n">
+      <onentry>
+        <script src="table2.action" />
+      </onentry>
+      <transition event="ev6" target="s8"/>
+      <transition event="ev7" target="s9"/>
+      <transition event="ev8" target="s17"/>
+    </state>
+    <state id="s7" name="s7n">
+    </state>
+    <state id="s8" name="s8n">
+      <transition event="ev8" target="s9"/>
+      <transition event="ev9" target="s7"/>
+    </state>
+    <final id="s17" name="s17n">
+    </final>
+    <final id="s9" name="s9n">
+    </final>
+  </state>
+  <state id="s10" name="s10n">
+    <initial>
+      <transition target="s11"/>
+    </initial>
+    <state id="s11" name="s11n">
+      <transition event="ev10" target="s14"/>
+      <transition event="ev11" target="s12"/>
+    </state>
+    <state id="s12" name="s12n">
+      <transition event="ev12" target="s14"/>
+      <transition event="ev13" target="s15"/>
+      <transition event="ev14" target="s13"/>
+    </state>
+    <state id="s13" name="s13n">
+      <transition event="ev15" target="s14"/>
+      <transition event="ev16" target="s15"/>
+      <transition event="ev17" target="s14"/>
+      <transition event="ev18" target="s15"/>
+    </state>
+    <final id="s14" name="s14n">
+    </final>
+    <final id="s15" name="s15n">
+    </final>
+  </state>
+  <final id="s16" name="s16n">
+  </final>
+</scxml>

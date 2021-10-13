@@ -95,9 +95,9 @@ test-suite statechart-sdk-test
   other-modules:
       CoreSpec
       Helper
-      Plugin.Haskell.InvoiceFlow
-      Plugin.Haskell.PaymentFlow
-      Plugin.Haskell.PurchaseFlow
+      Plugin.Haskell.Chart1
+      Plugin.Haskell.Chart2
+      Plugin.Haskell.Chart3
       Paths_statechart_sdk
   hs-source-dirs:
       test

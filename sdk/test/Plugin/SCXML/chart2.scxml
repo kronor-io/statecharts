@@ -1,0 +1,73 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              version="1.0"
+              initial="s1">
+    <state id="s1" name="s1n">
+        <initial>
+            <transition target="s2"/>
+        </initial>
+        <state id="s2" name="s2n">
+            <initial>
+                <transition target="s3"/>
+            </initial>
+            <state id="s3" name="s3n">
+                <transition event="foo.ev10" target="s4"/>
+                <onentry>
+                    <script src="table1.action1" />
+                </onentry>
+            </state>
+            <state id="s4" name="s4n">
+                <transition event="foo.ev9" target="s5"/>
+                <onentry>
+                    <script src="table1.action2" />
+                </onentry>
+            </state>
+            <state id="s5" name="s5n">
+                <transition event="foo.ev8" target="s6"/>
+                <onentry>
+                    <script src="table1.action3" />
+                </onentry>
+            </state>
+            <state id="s6" name="s6n">
+                <transition event="foo.abc7" target="s7"/>
+                <onentry>
+                    <script src="table1.action4" />
+                </onentry>
+            </state>
+            <final id="s7" name="s7n">
+                <onentry>
+                    <script src="table1.action5" />
+                </onentry>
+            </final>
+            <transition event="foo.abc6" target="s8"/>
+        </state>
+        <state id="s8" name="s8n">
+            <initial>
+                <transition target="s9"/>
+            </initial>
+            <state id="s9" name="s9n">
+                <onentry>
+                    <script src="table1.action7" />
+                </onentry>
+                <transition event="foo.abc5" target="s10"/>
+                <transition event="foo.abc4" target="s10"/>
+            </state>
+            <final id="s10" name="s10n">
+                <onentry>
+                    <script src="table1.action6" />
+                </onentry>
+            </final>
+        </state>
+        <transition event="bar.abc3" target="s11"/>
+        <transition event="bar.abc2" target="s12"/>
+        <transition event="foo.abc1" target="s13"/>
+    </state>
+    <final id="s11" name="s11n">
+    </final>
+    <final id="s12" name="s12n">
+    </final>
+    <final id="s13" name="s13n">
+        <onentry>
+            <script src="table1.action11" />
+        </onentry>
+    </final>
+</scxml>

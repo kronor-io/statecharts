@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -ddump-splices #-}
 {-# OPTIONS_GHC -ddump-to-file #-}
 
-module Plugin.Haskell.InvoiceFlow where
+module Plugin.Haskell.Chart2 where
 
 import Data.FileEmbed
 import Language.Haskell.TH.Syntax (liftString)
@@ -11,5 +11,5 @@ import Statechart.CodeGen.Haskell
 import Statechart.Types
 
 genCodeFromFile
-    "invoice_flow"
-    $(makeRelativeToProject "test/Plugin/SCXML/invoice_flow.scxml" >>= liftString)
+    "chart2"
+    $(makeRelativeToProject "test/Plugin/SCXML/chart2.scxml" >>= liftString)

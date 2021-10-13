@@ -1,0 +1,55 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              version="1.0"
+              initial="s1">
+  <state id="s1" name="s1n">
+    <transition event="ev1" target="s2"/>
+    <onentry>
+      <script src="table1.action5" />
+    </onentry>
+  </state>
+  <state id="s2" name="s2n">
+    <transition event="ev2" target="s3"/>
+    <transition event="ev3" target="s9"/>
+    <transition event="ev4" target="s7"/>
+    <onentry>
+      <script src="table1.action4" />
+    </onentry>
+  </state>
+  <state id="s3" name="s3n">
+    <transition event="ev5" target="s6"/>
+    <transition event="ev6" target="s8"/>
+    <transition event="ev7" target="s9"/>
+    <transition event="ev8" target="s7"/>
+    <onentry>
+      <script src="table1.action3" />
+    </onentry>
+    <initial>
+      <transition target="s4"/>
+    </initial>
+    <state id="s4" name="s4n">
+    <transition event="ev9" target="s5"/>
+    </state>
+    <state id="s5" name="s5n">
+      <onentry>
+        <script src="table1.action2" />
+      </onentry>
+      <transition event="ev10" target="s4"/>
+    </state>
+  </state>
+
+  <final id="s6" name="s6n">
+    <onentry>
+      <script src="table1.action1" />
+    </onentry>
+  </final>
+
+  <final id="s7" name="s7n">
+  </final>
+
+  <final id="s8" name="s8n">
+  </final>
+
+  <final id="s9" name="s9n">
+  </final>
+
+</scxml>
