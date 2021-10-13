@@ -2,26 +2,25 @@
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
 module Statechart.CodeGen.SQL (writeSQLs, generateSQL, GenConfig (..), gen) where
 
-import RIO.ByteString qualified as BS
-import RIO.Text qualified as T
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
 import RIO
+import RIO.ByteString qualified as BS
+import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
 import System.FilePath.Posix (dropExtension)
 
 writeSQLs :: FilePath -> [(FilePath, Text)] -> IO ()
 writeSQLs targetPath xs =
-  forM_ xs $ \(path, body) ->
-    BS.writeFile (targetPath <> dropExtension path <> ".sql") (T.encodeUtf8 body)
-
+    forM_ xs $ \(path, body) ->
+        BS.writeFile (targetPath <> dropExtension path <> ".sql") (T.encodeUtf8 body)
 
 generateSQL :: [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text)]
 generateSQL =
-    fmap $ \(x, bs, a) ->
+    fmap $ \(x, _bs, a) ->
         let code = gen (GenConfig (T.pack (dropExtension x)) (version a)) a
-        in (x, code)
+         in (x, code)
 
 -------------
 -- HELPERS --
@@ -41,7 +40,6 @@ gen GenConfig{..} chart =
         t :: Text = transitionArea chart
         b = fnBody GenConfig{..} [iii|#{s}\n#{t}|]
      in [iii|#{h}#{b}\n|]
-
 
 -- | This is the area where we define the states inside the def.
 stateArea :: (Eq s, AsText s, AsText e) => Chart s e -> Text
