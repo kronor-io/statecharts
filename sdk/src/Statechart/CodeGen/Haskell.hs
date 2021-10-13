@@ -1,7 +1,10 @@
 -- | This module is used to generate Haskell code from a chart.
-module Statechart.CodeGen.Haskell (genCodeFromChart, genCodeFromFile) where
+module Statechart.CodeGen.Haskell (writeHaskells,generateHaskell, genCodeFromChart, genCodeFromFile) where
 
+import RIO.ByteString qualified as BS
+import System.Directory (createDirectoryIfMissing)
 import Data.ByteString.Lazy qualified as LBS
+import System.FilePath.Posix (dropExtension)
 import Data.List (foldl1)
 import Language.Haskell.TH
 import RIO
@@ -10,6 +13,21 @@ import Statechart.Helpers
 import Statechart.SCXML qualified as SCXML
 import Statechart.Types as Types
 import Text.Casing
+
+writeHaskells :: FilePath -> [(FilePath, Text)] -> IO ()
+writeHaskells targetPath xs = do
+  createDirectoryIfMissing True targetPath
+  forM_ xs $ \(path, body) -> do
+    let finalPath = targetPath <> dropExtension path <> ".hs"
+    BS.writeFile finalPath (T.encodeUtf8 body)
+
+-- | This function needs to be in IO so we run the Q monad with the templates.
+generateHaskell :: [(FilePath, ByteString, Chart StateName EventName)] -> IO [(FilePath, Text)]
+generateHaskell =
+    mapM $ \(x, bs, a) -> do
+        code <- runQ $ genCodeFromChart (T.takeWhile (/= '.') (T.pack x)) a
+        let header = T.pack $ "module " <> pascal (T.unpack $ T.takeWhile (/= '.') (T.pack x)) <> " where\n\nimport RIO\nimport Types\n\n-- FILE AUTOMATICALLY\n-- GENERATED. DO NOT CHANGE IT\n-- MANUALLY. CHANGES MIGHT BE OVERWRITTEN.\n\n"
+        return (pascal x, header <> T.pack (pprint code))
 
 genCodeFromChart :: Text -> Chart StateName EventName -> Q [Dec]
 genCodeFromChart flowName doc = do

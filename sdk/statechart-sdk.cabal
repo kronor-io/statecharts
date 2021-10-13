@@ -17,6 +17,7 @@ library
   exposed-modules:
       Statechart.CodeGen.Haskell
       Statechart.CodeGen.SQL
+      Statechart.CodeGen.Visualization
       Statechart.Helpers
       Statechart.SCXML
       Statechart.Types
@@ -82,8 +83,11 @@ library
     , bytestring
     , casing
     , containers
+    , directory
+    , filepath
     , rio >=0.1.12.0
     , string-interpolate
+    , tar
     , template-haskell
     , text
     , xml-conduit
