@@ -1,55 +1,55 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
               version="1.0"
-              initial="waiting_for_capture">
-  <state id="waiting_for_capture" name="waiting for capture">
-    <transition event="payment.initialize" target="initializing"/>
+              initial="s1">
+  <state id="s1" name="s1n">
+    <transition event="ev1" target="s2"/>
     <onentry>
-      <script src="runtime.check_for_capture" />
+      <script src="table1.action5" />
     </onentry>
   </state>
-  <state id="initializing" name="initialize payment">
-    <transition event="payment.created" target="waiting_for_payment"/>
-    <transition event="payment.cancel" target="cancelled"/>
-    <transition event="payment.error" target="error"/>
+  <state id="s2" name="s2n">
+    <transition event="ev2" target="s3"/>
+    <transition event="ev3" target="s9"/>
+    <transition event="ev4" target="s7"/>
     <onentry>
-      <script src="runtime.enqueue_payment_create_job" />
+      <script src="table1.action4" />
     </onentry>
   </state>
-  <state id="waiting_for_payment" name="waiting for payment">
-    <transition event="payment.paid" target="paid"/>
-    <transition event="payment.declined" target="declined"/>
-    <transition event="payment.cancelled" target="cancelled"/>
-    <transition event="payment.error" target="error"/>
+  <state id="s3" name="s3n">
+    <transition event="ev5" target="s6"/>
+    <transition event="ev6" target="s8"/>
+    <transition event="ev7" target="s9"/>
+    <transition event="ev8" target="s7"/>
     <onentry>
-      <script src="runtime.enqueue_payment_polling_job" />
+      <script src="table1.action3" />
     </onentry>
     <initial>
-      <transition target="processing"/>
+      <transition target="s4"/>
     </initial>
-    <state id="processing" name="processing the payment">
-    <transition event="payment.cancel" target="cancelling"/>
+    <state id="s4" name="s4n">
+    <transition event="ev9" target="s5"/>
     </state>
-    <state id="cancelling" name="cancel payment request">
+    <state id="s5" name="s5n">
       <onentry>
-        <script src="runtime.enqueue_payment_cancel_job" />
+        <script src="table1.action2" />
       </onentry>
-      <transition event="payment.cancel.failed" target="processing"/>
+      <transition event="ev10" target="s4"/>
     </state>
   </state>
 
-  <final id="paid" name="paid">
+  <final id="s6" name="s6n">
     <onentry>
-      <script src="runtime.promote_payment_to_marketplace" />
+      <script src="table1.action1" />
     </onentry>
   </final>
 
-  <final id="error" name="error">
+  <final id="s7" name="s7n">
   </final>
 
-  <final id="declined" name="payment declined">
+  <final id="s8" name="s8n">
   </final>
 
-  <final id="cancelled" name="payment cancelled">
+  <final id="s9" name="s9n">
   </final>
 
 </scxml>
