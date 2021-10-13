@@ -77,6 +77,9 @@ library:
     - bytestring
     - text
     - aeson
+    - filepath
+    - directory
+    - tar
 
 tests:
   statechart-sdk-test:

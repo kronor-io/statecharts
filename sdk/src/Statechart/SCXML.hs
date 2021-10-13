@@ -1,14 +1,25 @@
 -- | This is the parser for the SCXML file format.
-module Statechart.SCXML (parse, parseRoot) where
+module Statechart.SCXML (readSCXMLfiles, parse, parseRoot) where
 
 import Data.Map.Strict qualified as Map
 import RIO
+import RIO.ByteString qualified as BS
 import RIO.ByteString.Lazy qualified as LBS
 import RIO.Text qualified as T
 import Statechart.Types
+import System.Directory (listDirectory)
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
+
+readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
+readSCXMLfiles sourcePath = do
+    xs_ <- listDirectory sourcePath
+    forM (zip xs_ xs_) $ \(path, _) -> do
+        a <- BS.readFile (sourcePath <> path)
+        case parse $ LBS.fromStrict a of
+            Left e -> error . show $ e
+            Right p -> return (path, a, p)
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)
