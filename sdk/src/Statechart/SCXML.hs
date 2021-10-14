@@ -8,20 +8,21 @@ import RIO.ByteString.Lazy qualified as LBS
 import RIO.Text qualified as T
 import Statechart.Types
 import System.Directory (listDirectory)
+import System.FilePath.Posix (takeExtension)
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
 
 readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
 readSCXMLfiles sourcePath = do
-    xs_ <- filter notScxmlFile <$> listDirectory sourcePath
+    xs_ <- filter scxmlFile <$> listDirectory sourcePath
     forM (zip xs_ xs_) $ \(path, _) -> do
         a <- BS.readFile (sourcePath <> path)
         case parse $ LBS.fromStrict a of
             Left e -> error . show $ e
             Right p -> return (path, a, p)
  where
-   notScxmlFile a = not $ hasExtension ".scxml"
+   scxmlFile a = takeExtension a == ".scxml"
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)
