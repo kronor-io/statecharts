@@ -14,12 +14,14 @@ import Text.XML.Cursor
 
 readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
 readSCXMLfiles sourcePath = do
-    xs_ <- listDirectory sourcePath
+    xs_ <- filter notScxmlFile <$> listDirectory sourcePath
     forM (zip xs_ xs_) $ \(path, _) -> do
         a <- BS.readFile (sourcePath <> path)
         case parse $ LBS.fromStrict a of
             Left e -> error . show $ e
             Right p -> return (path, a, p)
+ where
+   notScxmlFile a = not $ hasExtension ".scxml"
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)
