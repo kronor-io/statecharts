@@ -1,3 +1,4 @@
+this is just a bonus, don't worry about it
 generateReports :: [Chart a b] -> [Report]
 writeReportsVersioned :: [Report] -> IO ()
 data Report = Report

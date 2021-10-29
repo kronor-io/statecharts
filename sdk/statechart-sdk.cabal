@@ -15,6 +15,7 @@ build-type:     Simple
 
 library
   exposed-modules:
+      Statechart.Analysis
       Statechart.CodeGen.Haskell
       Statechart.CodeGen.SQL
       Statechart.CodeGen.Visualization
@@ -85,6 +86,7 @@ library
     , containers
     , directory
     , filepath
+    , mtl
     , rio >=0.1.12.0
     , string-interpolate
     , tar
@@ -97,6 +99,7 @@ test-suite statechart-sdk-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      AnalysisSpec
       CoreSpec
       Helper
       Plugin.Haskell.Chart1
@@ -163,6 +166,7 @@ test-suite statechart-sdk-test
     , file-embed
     , hspec
     , hspec-discover
+    , mtl
     , rio >=0.1.12.0
     , statechart-sdk
     , string-interpolate

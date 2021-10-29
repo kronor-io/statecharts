@@ -6,7 +6,7 @@ import RIO.Text qualified as T
 
 -- TODO This need to be reviewed and simplified moving foward.
 
-newtype StateName = StateName Text deriving (Eq, Show)
+newtype StateName = StateName Text deriving (Eq, Show, Ord)
 
 instance IsString StateName where
     fromString = unsafeEr . fromText . T.pack
