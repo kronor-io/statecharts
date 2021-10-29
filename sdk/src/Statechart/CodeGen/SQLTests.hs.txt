@@ -16,3 +16,9 @@ genTest = undefined
 layoutNotifyStateMachine = [iii| select fsm.notify_state_machine...etc |]
 
 layoutReplaceEventHandler = [iii| create or replace function fsm.handle_machine_events...etc |]
+
+-- TODO consider how similar the generation of SQL tests is
+to what we already have in terms of SQL generation, because
+we generate the sql charts. So should they be a single
+helper module and this kind of thing to make things smaller
+and more robust?
