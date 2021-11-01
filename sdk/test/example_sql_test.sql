@@ -13,13 +13,21 @@ BEGIN;
 -- TODO alternatively we may pass the is or ok fn inside the body of the intercepeted fn. will it work?
 
 create or replace table intercepted ...
-create or replace function last_intercepted()....
+  -- TODO
+  -- event
+  -- message
+  -- when
+create or replace function last_intercepted()
+  -- TODO
+  -- select by sorting by time
 
+-- NOTE: this function only needs to be replaced once
 create or replace function fsm.handle_machine_events()....
  $$
   insert into intercepted () values .....
  $$
 
+-- NOTE: the first cluster will never have a transition, its just a initial check of state plus the action test
  --select notify_state_machine(...);
  select notify_state_machine(1,:mid, '', ''::jsonb);
  with foo as foo (select last_intercepted()) select is(:foo,'invoice.created_action');
@@ -32,7 +40,8 @@ create or replace function fsm.handle_machine_events()....
  select fsm.state_machine_state where ...;
  with foo as foo (select last_intercepted()) select is(:foo,'invoice.due_date_action');
 
- -- etc
+-- TODO and by last consider how we will add the extra conditions when extending the scxml?
+-- they will be checked from inside the intercepted function or outside? and if from inside the intercepted function, we cannot defer the event, we need to incercept and maybe pass it along so it can has it effect? not sure.
 
   -- create the machine of name invoice_flow with lastest chart
   -- run first cluster, meaning do the transition, check the state, check the action
