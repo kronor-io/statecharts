@@ -105,6 +105,7 @@ test-suite statechart-sdk-test
       Plugin.Haskell.Chart1
       Plugin.Haskell.Chart2
       Plugin.Haskell.Chart3
+      SQLTestGenSpec
       Paths_statechart_sdk
   hs-source-dirs:
       test

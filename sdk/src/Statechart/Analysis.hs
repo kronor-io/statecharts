@@ -1,6 +1,6 @@
 module Statechart.Analysis (getPaths, Path) where
 
-import Control.Monad.State (StateT, evalState, gets, modify)
+import Control.Monad.State (StateT, evalState, gets)
 import Data.Foldable
 import RIO
 import RIO.Set qualified as S
@@ -12,7 +12,7 @@ import Statechart.Types
 ------------
 
 getPaths :: Chart StateName EventName -> Set Path
-getPaths chart = evalState getPathsT (newStateTracing chart)
+getPaths chart = evalState getPathsT (tracingChart chart)
   where
     getPathsT :: StateT TracingState Identity (Set Path)
     getPathsT = do
@@ -23,10 +23,6 @@ getPaths chart = evalState getPathsT (newStateTracing chart)
 -- PRIVATE --
 -------------
 
-fromInitial :: Transition StateName EventName -> Set Path -> StateT TracingState Identity (Set Path)
-fromInitial trans acc = do
-    undefined
-
 data TracingState = TracingState
     { originalChart :: Chart StateName EventName
     , currentState :: StateName
@@ -35,15 +31,19 @@ data TracingState = TracingState
     , paths :: Set Path
     }
 
-newStateTracing :: Chart StateName EventName -> TracingState
-newStateTracing chart =
+-- | Creates a new state over the given chart.
+tracingChart :: Chart StateName EventName -> TracingState
+tracingChart chart =
     TracingState
         { originalChart = chart
         , currentState = sid (getInitialState chart)
-        , currentPath = undefined -- TODO
+        , currentPath = Nil
         , alreadyVisited = S.fromList [sid (getInitialState chart)]
         , paths = S.empty
         }
+
+fromInitial :: Transition StateName EventName -> Set Path -> StateT TracingState Identity (Set Path)
+fromInitial trans acc = undefined
 
 -- TODO alternatively we might use the bimapState function.
 -- How can it be used?

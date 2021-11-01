@@ -1,0 +1,3 @@
+-- in here there will be the tests regarding sql test gen.
+-- we are going to use one of the scxmls, parse it, and generate sql tests for it.
+-- then we compare this tests with the manually written sql test file.
