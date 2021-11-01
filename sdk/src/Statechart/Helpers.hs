@@ -59,6 +59,12 @@ isInitial chart state = initial chart == id_ || any aux (states chart)
     aux MultiState{..} = msInitial == id_ || any aux subStates
     aux Parallel{..} = any aux regions
 
+getInitialState :: Chart StateName EventName -> State StateName EventName
+getInitialState chart =
+    case filter (isInitial chart) (getAllChartStates chart) of
+        [ini] -> ini
+        _ -> error "impossible"
+
 -- | Returns all the parent states of a given state with the most inmediate parent
 -- as the first element all the wayt to the root.
 -- Note: assumes the state only exists once inside the chart.

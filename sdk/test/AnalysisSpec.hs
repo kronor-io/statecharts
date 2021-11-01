@@ -14,14 +14,23 @@ import Statechart.Analysis
 
 spec :: Spec
 spec = do
-  -- TODO we want a bunch of unit tests
-  -- getting the paths out of the chart is that kind of tricky functiion with a funch of maps and folds that 
-  -- get confusing quickly, so make sure to go incrmentally and using unit tests for small functions.
-  return ()
+  getPathsSpec
+
+getPathsSpec :: Spec
+getPathsSpec = do
+  describe "getPaths" $ do
+    it "" pending
+    it "" pending
+    it "" pending
+  describe "fromInitial" $ do
+    it "" pending
+    it "" pending
+    it "" pending
 
 -------------
 -- HELPERS --
 -------------
 
-shouldReturn' :: (Show a, Eq a, MonadState TracingState m) => m a -> a -> Expectation
-shouldReturn' ma expected'a = runTracing ma `shouldReturn` expected'a
+-- not needed anymore i think
+------------------shouldReturn' :: (Show a, Eq a, MonadState TracingState m) => m a -> a -> Expectation
+------------------shouldReturn' ma expected'a = runTracing ma `shouldReturn` expected'a
