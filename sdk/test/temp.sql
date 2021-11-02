@@ -12,102 +12,67 @@
 BEGIN;
       select plan(4);
       -----------------------------------------------
-      -- helper setup 
+      -- HELPER SETUP -------------------------------
       -----------------------------------------------
-      create temporary table intercepted (
-        id bigint not null generated always as identity,
-        event text not null,
-        event_date timestamptz not null default now()
-      );
-      create or replace function last_intercepted()
-        returns intercepted as
-        $$
-          declare
-            foo intercepted;
-          begin
-            select * into foo from intercepted order by id desc limit 1;
-            return foo;
-          end
-        $$ language plpgsql strict;
-      create or replace function function_exists(fname text)
-        returns bool as
-        $$
-          begin
-            IF NOT EXISTS (select * from information_schema.routines where routine_name = fname) THEN
-                return false;
-            else
-                return true;
-            end if;
-          end
-        $$ language plpgsql strict;
-      create or replace function msg(fname text)
-        returns text as
-        $$
-          begin
-            return format('function "%s" is defined', fname);
-          end
-        $$ language plpgsql strict;
-      -- TODO could this still be useful?
-      --create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
-      --  returns void as
-      --$$
-      --  begin
-      --    return;
-      --  end;
-      --$$ language plpgsql volatile strict;
+
+      -- This table exists so we can check that a action was 
+      -- called before we actually call the function, and we 
+      -- register this call so we can scrutinize it down the 
+      -- road.
+      create temporary table intercepted (id bigint not null generated always as identity,event text not null,event_date timestamptz not null default now());
+
+      -- We use this to check what was the last called action.
+      create or replace function last_intercepted() returns intercepted as 
+      $$ begin return * from intercepted order by id desc limit 1; end $$ language plpgsql strict;
+
+      -- We use this to register a new action in the table. Just a helper. This is functional sql now, I call the shots here.
+      create or replace function intercepted_(event_ text) returns void as 
+      $$ begin insert into intercepted (event) values (event_); end $$ language plpgsql strict;
+
+      -- So we can know that an action that was specified in the charts actually exists in the database.
+      create or replace function function_exists(fname text) returns bool as
+      $$ BEGIN 
+           IF NOT EXISTS (SELECT * FROM information_schema.routines WHERE routine_name = fname) 
+           THEN           RETURN FALSE; 
+           ELSE           RETURN TRUE; 
+           END IF;       
+         END 
+      $$ language plpgsql strict;
+
       -----------------------------------------------
-      -- STATIC CHECKS ------------------------------
+      -- STATIC CHECKS ------------------------------ (do NOT need to be done per path)
       -----------------------------------------------
-      select is(function_exists('created_action'      ), true, msg('created_action'));
-      select is(function_exists('soft_reminder_action'), true, msg('soft_reminder_action'));
+      select is(function_exists('created_action'), true);
+      select is(function_exists('soft_reminder_action'), true);
       -----------------------------------------------
-      -- INTERCEPTION ò.ó
+      -- CREATE COPY OF THE ACTIONS ----------------- (do NOT need to be done per path)
       -----------------------------------------------
-      alter function invoice.created_action(event_payload fsm_event_payload) rename to created_action_original;
-      create function invoice.created_action(event_payload fsm_event_payload)
-        returns void as
-      $$
-        begin
-          insert into intercepted (event) values ('invoice.created_action');
-          --select invoice.created_action_original(event_payload::fsm_event_payload);
-          return;
-        end;
-      $$ language plpgsql volatile strict;
-      ------------------------------------------------------------------
-      alter function invoice.soft_reminder_action(event_payload fsm_event_payload) rename to soft_reminder_action_original;
-      create function invoice.soft_reminder_action(event_payload fsm_event_payload)
-        returns void as
-      $$
-        begin
-          insert into intercepted (event) values ('invoice.soft_reminder_action');
-          --select invoice.soft_reminder_action_original(event_payload::fsm_event_payload);
-          return;
-        end;
-      $$ language plpgsql volatile strict;
+      alter function invoice.created_action(event_payload fsm_event_payload) rename to ORIGINAL_created_action;
+      alter function invoice.soft_reminder_action(event_payload fsm_event_payload) rename to ORIGINAL_soft_reminder_action;
       -----------------------------------------------
-      -- SETUP
+      -- INTERCEPTION ò.ó --------------------------- (do NOT need to be done per path)
       -----------------------------------------------
+      create function invoice.created_action(event_payload fsm_event_payload) returns void as 
+      $$ begin perform intercepted_('invoice.created_action'); perform invoice.ORIGINAL_created_action(event_payload::fsm_event_payload); return; end; $$ language plpgsql volatile strict;
+      create function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as
+      $$ begin perform intercepted_('invoice.soft_reminder_action'); perform invoice.ORIGINAL_soft_reminder_action(event_payload::fsm_event_payload); return; end; $$ language plpgsql volatile strict;
+      -----------------------------------------------
+      -- SETUP --------------------------------------
+      -----------------------------------------------
+      -- TODO in here we would have the setup of the INITIAL data, from which stuff can de done down the road
       select id as machine_id from fsm.start_machine_with_latest_statechart(1, 'invoice_flow') \gset
       -----------------------------------------------
       -- REAL TESTING
       -----------------------------------------------
-      ------------------------------------------------
-      -- select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
-      --select count(*) from fsm.state_machine_state where state_id = 'settling';
-      --select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-      --select count(*) from fsm.state_machine_state where state_id = 'created';
+      -- TODO do something better than this counts
+      select count(*) from fsm.state_machine_state where state_id = 'settling';
+      select count(*) from fsm.state_machine_state where state_id = 'in_progress';
+      select count(*) from fsm.state_machine_state where state_id = 'created';
       with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.created_action'::text) from last_;
-      ------------------------------------------------
       select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
-      --select count(*) from fsm.state_machine_state where state_id = 'settling';
-      --select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-      --select count(*) from fsm.state_machine_state where state_id = 'in_progress_soft_reminder';
+      select count(*) from fsm.state_machine_state where state_id = 'settling';
+      select count(*) from fsm.state_machine_state where state_id = 'in_progress';
+      select count(*) from fsm.state_machine_state where state_id = 'in_progress_soft_reminder';
       with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.soft_reminder_action'::text) from last_;
-      ------------------------------------------------
-      --select notify_state_machine(1,:mid, '', ''::jsonb);
-      --with bar as bar (select fsm.state_machine_state where ...;
-      --with foo as foo (select last_intercepted()) select is(:foo,'invoice.due_date_action');
-      ------------------------------------------------
       select finish();
-
 ROLLBACK;
