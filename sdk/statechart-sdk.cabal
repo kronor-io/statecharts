@@ -18,6 +18,7 @@ library
       Statechart.Analysis
       Statechart.CodeGen.Haskell
       Statechart.CodeGen.SQL
+      Statechart.CodeGen.SQLTests
       Statechart.CodeGen.Visualization
       Statechart.Helpers
       Statechart.SCXML

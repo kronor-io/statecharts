@@ -8,7 +8,7 @@ import Test.Hspec
 spec :: Spec
 spec = return ()
 
--- | Example of how one path of the invoice_flow might look.]
+-- | Example of how one path of the invoice_flow might look.
 -- We can use this to create SQL tests.
 -- We can use the number of tests to specify the pgTap "prove(n)"
 examplePath :: Path
