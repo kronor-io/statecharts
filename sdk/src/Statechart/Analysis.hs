@@ -1,4 +1,4 @@
-module Statechart.Analysis (getPaths, Path) where
+module Statechart.Analysis (getPaths, Path, Hop(..)) where
 
 import Control.Monad.State (StateT, evalState, gets)
 import Data.Foldable
@@ -23,6 +23,14 @@ getPaths chart = evalState getPathsT (tracingChart chart)
 -- PRIVATE --
 -------------
 
+type Path = [Hop]
+
+data Hop = Hop
+  { transition  :: Maybe EventName
+  , targetState :: StateName
+  , actions     :: [Text]
+  }
+
 data TracingState = TracingState
     { originalChart :: Chart StateName EventName
     , currentState :: StateName
@@ -37,7 +45,7 @@ tracingChart chart =
     TracingState
         { originalChart = chart
         , currentState = sid (getInitialState chart)
-        , currentPath = Nil
+        , currentPath = []
         , alreadyVisited = S.fromList [sid (getInitialState chart)]
         , paths = S.empty
         }
@@ -75,7 +83,3 @@ fromInitial trans acc = undefined
 -- alternatively the states might be implicit, but this goes against the
 -- plan of extending the scxmls in the future, in a way, having the states
 -- in here is the first constraint that we can put on a path.
-data Path
-    = Nil
-    | State Text Path
-    | Trans Text Path
