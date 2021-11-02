@@ -10,18 +10,41 @@
 --
 -----------------------------------------------------------------------------------------------
 BEGIN;
+      select plan(4);
       -----------------------------------------------
       -- helper setup 
       -----------------------------------------------
       create temporary table intercepted (
+        id bigint not null generated always as identity,
         event text not null,
         event_date timestamptz not null default now()
       );
       create or replace function last_intercepted()
+        returns intercepted as
+        $$
+          declare
+            foo intercepted;
+          begin
+            select * into foo from intercepted order by id desc limit 1;
+            return foo;
+          end
+        $$ language plpgsql strict;
+      create or replace function function_exists(fname text)
+        returns bool as
+        $$
+          begin
+            IF NOT EXISTS (select * from information_schema.routines where routine_name = fname) THEN
+                return false;
+            else
+                return true;
+            end if;
+          end
+        $$ language plpgsql strict;
+      create or replace function msg(fname text)
         returns text as
         $$
           begin
-            select event from intercepted order by event_date desc limit 1;
+            return format('function "%s" is defined', fname);
           end
         $$ language plpgsql strict;
       -- TODO could this still be useful?
@@ -33,10 +56,14 @@ BEGIN;
       --  end;
       --$$ language plpgsql volatile strict;
       -----------------------------------------------
+      -- STATIC CHECKS ------------------------------
+      -----------------------------------------------
+      select is(function_exists('created_action'      ), true, msg('created_action'));
+      select is(function_exists('soft_reminder_action'), true, msg('soft_reminder_action'));
+      -----------------------------------------------
       -- INTERCEPTION ò.ó
       -----------------------------------------------
-      alter function invoice.created_action(event_payload fsm_event_payload) 
-      rename to created_action_original;
+      alter function invoice.created_action(event_payload fsm_event_payload) rename to created_action_original;
       create function invoice.created_action(event_payload fsm_event_payload)
         returns void as
       $$
@@ -47,8 +74,7 @@ BEGIN;
         end;
       $$ language plpgsql volatile strict;
       ------------------------------------------------------------------
-      alter function invoice.soft_reminder_action(event_payload fsm_event_payload) 
-      rename to soft_reminder_action_original;
+      alter function invoice.soft_reminder_action(event_payload fsm_event_payload) rename to soft_reminder_action_original;
       create function invoice.soft_reminder_action(event_payload fsm_event_payload)
         returns void as
       $$
@@ -65,23 +91,23 @@ BEGIN;
       -----------------------------------------------
       -- REAL TESTING
       -----------------------------------------------
-      select plan(1);
-        ------------------------------------------------
-        select count(*) from fsm.state_machine_state where state_id = 'settling';
-        select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-        select count(*) from fsm.state_machine_state where state_id = 'created';
-        select count(*) from intercepted where event = 'invoice.created_action';
-        ------------------------------------------------
-        select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
-        select count(*) from fsm.state_machine_state where state_id = 'settling';
-        select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-        select count(*) from fsm.state_machine_state where state_id = 'in_progress_soft_reminder';
-        select count(*) from intercepted where event = 'invoice.created_action';
-        ------------------------------------------------
-        --select notify_state_machine(1,:mid, '', ''::jsonb);
-        --with bar as bar (select fsm.state_machine_state where ...;
-        --with foo as foo (select last_intercepted()) select is(:foo,'invoice.due_date_action');
-        ------------------------------------------------
+      ------------------------------------------------
+      -- select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
+      --select count(*) from fsm.state_machine_state where state_id = 'settling';
+      --select count(*) from fsm.state_machine_state where state_id = 'in_progress';
+      --select count(*) from fsm.state_machine_state where state_id = 'created';
+      with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.created_action'::text) from last_;
+      ------------------------------------------------
+      select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
+      --select count(*) from fsm.state_machine_state where state_id = 'settling';
+      --select count(*) from fsm.state_machine_state where state_id = 'in_progress';
+      --select count(*) from fsm.state_machine_state where state_id = 'in_progress_soft_reminder';
+      with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.soft_reminder_action'::text) from last_;
+      ------------------------------------------------
+      --select notify_state_machine(1,:mid, '', ''::jsonb);
+      --with bar as bar (select fsm.state_machine_state where ...;
+      --with foo as foo (select last_intercepted()) select is(:foo,'invoice.due_date_action');
+      ------------------------------------------------
       select finish();
 
 ROLLBACK;
