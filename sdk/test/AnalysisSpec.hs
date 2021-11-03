@@ -18,6 +18,10 @@ spec = do
 
 getPathsSpec :: Spec
 getPathsSpec = do
+
+  -- TODO hows this going to be done in this new world?
+  -- we go directly from the chart to the resulting sql, no 'paths' invovled
+
   describe "getPaths" $ do
     it "" pending
     it "" pending
