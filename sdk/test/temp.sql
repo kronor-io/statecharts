@@ -11,9 +11,6 @@
 -----------------------------------------------------------------------------------------------
 BEGIN;
       select plan(4);
-      -----------------------------------------------
-      -- HELPER SETUP -------------------------------
-      -----------------------------------------------
 
       -- This table exists so we can check that a action was 
       -- called before we actually call the function, and we 
@@ -30,41 +27,56 @@ BEGIN;
       $$ begin insert into intercepted (event) values (event_); end $$ language plpgsql strict;
 
       -- So we can know that an action that was specified in the charts actually exists in the database.
-      create or replace function function_exists(fname text) returns bool as
+      create or replace function function_exists(schema text not null, fname text not null) returns bool as
       $$ BEGIN 
-           IF NOT EXISTS (SELECT * FROM information_schema.routines WHERE routine_name = fname) 
+           IF NOT EXISTS (SELECT * FROM information_schema.routines WHERE routine_name = fname) -- TODO how constraint per schema?
+                                                                                                -- TODO you can also constraint by type if you feel like it
            THEN           RETURN FALSE; 
            ELSE           RETURN TRUE; 
            END IF;       
          END 
       $$ language plpgsql strict;
 
-      -----------------------------------------------
-      -- STATIC CHECKS ------------------------------ (do NOT need to be done per path)
-      -----------------------------------------------
-      select is(function_exists('created_action'), true);
-      select is(function_exists('soft_reminder_action'), true);
-      -----------------------------------------------
-      -- CREATE COPY OF THE ACTIONS ----------------- (do NOT need to be done per path)
-      -----------------------------------------------
+      select is(function_exists('invoice','created_action'), true);
+      select is(function_exists('invoice','soft_reminder_action'), true);
+      select is(function_exists('invoice','due_date_action'), true);
+      select is(function_exists('invoice','reminder1_action'), true);
+      select is(function_exists('invoice','reminder2_action'), true);
+      select is(function_exists('invoice','paid_more_than_min_action'), true);
+      select is(function_exists('invoice','transferring_to_account_action'), true);
+      select is(function_exists('invoice','invoice_settled_action'), true);
+
+      create function invoice.created_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.created_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.due_date_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.due_date_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.reminder1_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.reminder1_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.reminder2_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.reminder2_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.paid_more_than_min_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.paid_more_than_min_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.transferring_to_account_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.transferring_to_account_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.settled_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.settled_action'); return; end; $$ language plpgsql volatile strict;
+      create function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.soft_reminder_action'); return; end; $$ language plpgsql volatile strict;
+
+      -- TODO check if the machine exists, as well, in the version that we expects
+      -- TODO we just need a test for each transition
+      -- TODO together with that or replacing that we can also use the function is_valid_transition to check all valid transitions for a state
+
+      -- TODO but how do we create the new machine? we create one every time? why not?
+
+      -- TODO one good thing or following the normal path would be testing the if states are substates of the correct parents and stuff like that.
+
+      -- NOTE new cluster
+      -- insert into
+      -- notify_state_machine
+      -- select is() ... from
+
       alter function invoice.created_action(event_payload fsm_event_payload) rename to ORIGINAL_created_action;
       alter function invoice.soft_reminder_action(event_payload fsm_event_payload) rename to ORIGINAL_soft_reminder_action;
-      -----------------------------------------------
-      -- INTERCEPTION ò.ó --------------------------- (do NOT need to be done per path)
-      -----------------------------------------------
-      create function invoice.created_action(event_payload fsm_event_payload) returns void as 
-      $$ begin perform intercepted_('invoice.created_action'); perform invoice.ORIGINAL_created_action(event_payload::fsm_event_payload); return; end; $$ language plpgsql volatile strict;
-      create function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.soft_reminder_action'); perform invoice.ORIGINAL_soft_reminder_action(event_payload::fsm_event_payload); return; end; $$ language plpgsql volatile strict;
-      -----------------------------------------------
-      -- SETUP --------------------------------------
-      -----------------------------------------------
-      -- TODO in here we would have the setup of the INITIAL data, from which stuff can de done down the road
+      alter function invoice.due_date_action(event_payload fsm_event_payload) rename to ORIGINAL_due_date_action;
+      alter function invoice.reminder1_action(event_payload fsm_event_payload) rename to ORIGINAL_reminder1_action;
+      alter function invoice.reminder2_action(event_payload fsm_event_payload) rename to ORIGINAL_reminder2_action;
+      alter function invoice.paid_more_than_min_action(event_payload fsm_event_payload) rename to ORIGINAL_paid_more_than_min_action;
+      alter function invoice.transferring_to_account_action(event_payload fsm_event_payload) rename to ORIGINAL_transferring_to_account_action;
+      alter function invoice.invoice_settled_action(event_payload fsm_event_payload) rename to ORIGINAL_settled_action;
       select id as machine_id from fsm.start_machine_with_latest_statechart(1, 'invoice_flow') \gset
-      -----------------------------------------------
-      -- REAL TESTING
-      -----------------------------------------------
-      -- TODO do something better than this counts
       select count(*) from fsm.state_machine_state where state_id = 'settling';
       select count(*) from fsm.state_machine_state where state_id = 'in_progress';
       select count(*) from fsm.state_machine_state where state_id = 'created';
