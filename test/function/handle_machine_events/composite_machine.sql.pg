@@ -3,12 +3,11 @@ BEGIN;
 
   \set shard 7000000001
   \set chart 9000000001
-  \set machine 80000000000
 
   \i test/fixtures/composite_machine.sql
 
-  select fsm.start_machine(:shard, :chart, machine_id := :machine);
-
+  select id as machine from fsm.create_machine(:shard, :chart) \gset
+  select fsm.start_machine(:shard, :machine);
 
   -- transition to the search state, which should activate all initial sub-states
 

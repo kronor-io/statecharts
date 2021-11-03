@@ -2,7 +2,7 @@
 
 BEGIN;
 
-  create or replace function fsm.start_machine(shard bigint, statechart bigint, initial_data jsonb default '{}', machine_id bigint default null)
+  create or replace function fsm.start_machine(shard bigint, machine_id bigint, initial_data jsonb default '{}')
     returns fsm.state_machine as
     $$
       declare
@@ -14,24 +14,14 @@ BEGIN;
         error_detail text;
       begin
 
-        if machine_id is not null
-          then
-              insert into fsm.state_machine (shard_id, id, statechart_id) values
-                (shard, machine_id, statechart)
-              returning * into machine;
-          else
-              insert into fsm.state_machine (shard_id, statechart_id) values
-                (shard, statechart)
-              returning * into machine;
-        end if;
+        select * into machine from fsm.state_machine where shard_id = shard and id = machine_id;
 
-        for initial in select * from fsm.get_initial_state(statechart)
+        for initial in select * from fsm.get_initial_state(machine.statechart_id)
         loop
 
           insert into fsm.state_machine_state
             (shard_id, state_machine_id, statechart_id, state_id) values
             (shard, machine.id, machine.statechart_id, initial.id);
-
 
           if initial.on_entry is not null
           then
@@ -71,9 +61,9 @@ BEGIN;
       end
     $$ language plpgsql volatile;
 
-    comment on function fsm.start_machine(bigint, bigint, jsonb, bigint) is $comment$
-        Starts a state machine and on all the initial states after activating them,
-        if on_entry is set it executes the callback for that state
+    comment on function fsm.start_machine(bigint, bigint, jsonb) is $comment$
+        Starts a given state machine by activating all of its initial states and
+        executing the corresponding on_entry callbacks.
     $comment$;
 
 COMMIT;

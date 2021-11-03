@@ -4,11 +4,11 @@ BEGIN;
     -- set var
   \set shard 7000000001
   \set chart 9000000001
-  \set machine 80000000000
 
   \i test/fixtures/machine_with_parents.sql
 
-  select fsm.start_machine(:shard, :chart, machine_id := :machine);
+  select id as machine from fsm.create_machine(:shard, :chart) \gset
+  select fsm.start_machine(:shard, :machine);
 
   select is(is_valid, true, 'the search transition should be valid')
   from fsm.is_valid_transition(:shard, :machine, 'search') is_valid;

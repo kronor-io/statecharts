@@ -1,13 +1,13 @@
 BEGIN;
 
-    select plan(1);
+    select plan(2);
 
     \set shard 7000000001
     \set chart 9000000001
     \i test/fixtures/machine_with_parents.sql
 
     select lives_ok(
-        format($$ select fsm.start_machine_with_latest_statechart(%s, 'name') $$, :shard),
+        format($$ select fsm.start_machine_with_latest_statechart(%s, 'search') $$, :shard),
         'starting a new machine should work'
     );
 

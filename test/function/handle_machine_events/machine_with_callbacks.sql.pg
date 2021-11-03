@@ -3,7 +3,6 @@ BEGIN;
 
   \set shard 7000000001
   \set chart 9000000001
-  \set machine 80000000000
 
   -- will be used to track which callbacks were executed
   create temporary table pg_temp.callbacks_called (
@@ -39,7 +38,8 @@ BEGIN;
     , on_exit = ('pg_temp', 'log_callback_execution')
   where statechart_id = :chart;
 
-  select fsm.start_machine(:shard, :chart, machine_id := :machine);
+  select id as machine from fsm.create_machine(:shard, :chart) \gset
+  select fsm.start_machine(:shard, :machine);
 
   select
       is(count(*), 1::bigint, 'the on_entry should have been called')

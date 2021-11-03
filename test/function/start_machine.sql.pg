@@ -5,14 +5,16 @@ BEGIN;
   \set chart 9000000001
   \i test/fixtures/machine_with_multiple_initials.sql
 
+  select id as machine_id from fsm.create_machine(:shard, :chart) \gset
+
   select lives_ok(
-     format($$ select fsm.start_machine(%s, %s) $$, :shard, :chart),
+     format($$ select fsm.start_machine(%s, %s) $$, :shard, :machine_id),
      'starting a new machine should work'
   );
 
   select is(count(*), 1::bigint, 'one machine should be created')
   from fsm.state_machine
-  where shard_id = :shard and statechart_id = :chart;
+  where shard_id = :shard and id = :machine_id;
 
   select is(
     array_agg(state_id),
@@ -20,7 +22,7 @@ BEGIN;
     'the initial state should be there'
   )
   from fsm.state_machine_state
-  where shard_id = :shard and statechart_id = :chart;
+  where shard_id = :shard and state_machine_id = :machine_id;
 
   select finish();
 ROLLBACK;

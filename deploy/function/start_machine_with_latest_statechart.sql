@@ -5,18 +5,16 @@ BEGIN;
     create or replace function fsm.start_machine_with_latest_statechart(shard_id bigint, named text, initial_data jsonb default '{}')
     returns setof fsm.state_machine as
     $$
-        with desired_chart as (
-            select id from fsm.get_latest_statechart(named)
-        )
         select m.*
-        from desired_chart
-        join fsm.start_machine(shard_id, desired_chart.id, initial_data) m on true
+        from fsm.create_state_machine_with_latest_statechart(shard_id, named) m
+        join fsm.start_machine(shard_id, m.id, initial_data) on true
+
         limit 1
     $$ language sql volatile strict
         rows 1;
 
     comment on function fsm.start_machine_with_latest_statechart(bigint, text, jsonb) is $comment$
-        Starts a state machine with the latest statechart with the name passed.
+        Creates and starts a state machine with the latest statechart with the name passed.
     $comment$;
 
 COMMIT;

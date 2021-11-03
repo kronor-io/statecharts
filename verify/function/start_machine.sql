@@ -2,6 +2,6 @@
 
 BEGIN;
 
-  select  has_function_privilege('fsm.start_machine(bigint, bigint, jsonb, bigint)', 'execute');
+  select  has_function_privilege('fsm.start_machine(bigint, bigint, jsonb)', 'execute');
 
 ROLLBACK;
