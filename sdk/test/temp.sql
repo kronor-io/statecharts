@@ -12,37 +12,7 @@
 BEGIN;
       select plan(4);
 
-      -- This table exists so we can check that a action was
-      -- called before we actually call the function, and we
-      -- register this call so we can scrutinize it down the
-      -- road.
-      create temporary table intercepted (id bigint not null generated always as identity,event text not null,event_date timestamptz not null default now());
-
-      -- We use this to check what was the last called action.
-      create or replace function last_intercepted() returns text as
-      $$
-        declare
-          foo intercepted;
-        begin
-          select * into foo from intercepted order by id desc limit 1;
-          return foo.event;
-         end
-      $$ language plpgsql strict;
-
-      create or replace function last_machine_state_id() returns text as
-      $$
-        declare
-          foo fsm.state_machine_state;
-        begin
-          select * into foo from fsm.state_machine_state order by shard_id desc limit 1;
-          return foo.state_id;
-         end
-      $$ language plpgsql strict;
-
-      -- We use this to register a new action in the table. Just a helper. This is functional sql now, I call the shots here.
-      create or replace function intercepted_(event_ text) returns void as
-      $$ begin insert into intercepted (event) values (event_); end $$ language plpgsql strict;
-
+      ----------------------------------------------------
       -- So we can know that an action that was specified in the charts actually exists in the database.
       create or replace function function_exists(schema text, fname text) returns bool as
       $$ BEGIN
@@ -54,6 +24,27 @@ BEGIN;
          END
       $$ language plpgsql strict;
 
+      ----------------------------------------------------
+      -- This table exists so we can check that a action was
+      -- called before we actually call the function, and we
+      -- register this call so we can scrutinize it down the
+      -- road.
+      create temporary table intercepted (id bigint not null generated always as identity,event text not null,event_date timestamptz not null default now());
+      -- We use this to check what was the last called action.
+      create or replace function last_intercepted() returns text as
+      $$
+        declare
+          foo intercepted;
+        begin
+          select * into foo from intercepted order by id desc limit 1;
+          return foo.event;
+         end
+      $$ language plpgsql strict;
+      -- We use this to register a new action in the table. Just a helper. This is functional sql now, I call the shots here.
+      create or replace function intercepted_(event_ text) returns void as
+      $$ begin insert into intercepted (event) values (event_); end $$ language plpgsql strict;
+
+      ----------------------------------------------------
       select is(function_exists('invoice','created_action'), true, 'created_action');
       select is(function_exists('invoice','soft_reminder_action'), true, 'soft_reminder_action');
       select is(function_exists('invoice','due_date_action'), true, 'due_date_action');
@@ -63,6 +54,7 @@ BEGIN;
       select is(function_exists('invoice','transferring_to_account_action'), true, 'transferring_to_account_action');
       select is(function_exists('invoice','settled_action'), true, 'settled_action');
 
+      ----------------------------------------------------
       create or replace function invoice.created_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.created_action'); return; end; $$ language plpgsql volatile strict;
       create or replace function invoice.due_date_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.due_date_action'); return; end; $$ language plpgsql volatile strict;
       create or replace function invoice.reminder1_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.reminder1_action'); return; end; $$ language plpgsql volatile strict;
@@ -72,21 +64,24 @@ BEGIN;
       create or replace function invoice.settled_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.settled_action'); return; end; $$ language plpgsql volatile strict;
       create or replace function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('invoice.soft_reminder_action'); return; end; $$ language plpgsql volatile strict;
 
+      ----------------------------------------------------
       select id as mid from fsm.start_machine_with_latest_statechart(1::bigint,'invoice_flow'::text,'{}'::jsonb) \gset
-      select fsm.notify_state_machine(1,:mid,'invoice.time.soft_reminder');
-      select is((select last_machine_state_id()),'in_progress_soft_reminder');
+      select is((select fsm.is_state_active(1,:mid,'created')),true, 'state is created');
+      select is((select last_intercepted()),'invoice.created_action');
+
+      select id as mid from fsm.start_machine_with_latest_statechart(2::bigint,'invoice_flow'::text,'{}'::jsonb) \gset
+      select fsm.notify_state_machine(2,:mid,'invoice.time.soft_reminder');
+      select is((select fsm.is_state_active(2,:mid,'in_progress_soft_reminder')),true, 'state is in_progress_soft_reminder');
+      select is((select last_intercepted()),'invoice.soft_reminder_action'); -- TODO its breaking in here, but why?
+
+      -- TODO why is this breaking, I don't get it...
+      -- TODO could this be related to the fix that lorenzo made in the master? if a merge would it fix? (prob not..)
+      select id as mid from fsm.start_machine_with_latest_statechart(3::bigint,'invoice_flow'::text,'{}'::jsonb) \gset
+      -- TODO is does work if a remove the line below, but why?
+      --update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid and shard_id = 3;
       select is((select last_intercepted()),'invoice.soft_reminder_action');
-
-      select id as mid_ from fsm.start_machine_with_latest_statechart(2::bigint,'invoice_flow'::text,'{}'::jsonb) \gset
-      update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid_ and shard_id = 2;
-      select fsm.notify_state_machine(2,:mid_,'invoice.time.due');
-      select is((select last_machine_state_id()),'due_date');
+      select fsm.notify_state_machine(3,:mid,'invoice.time.due');
+      select is((select fsm.is_state_active(3,:mid,'due_date')),true, 'state is due_date');
       select is((select last_intercepted()),'invoice.due_date_action');
-
-      -- TODO check if the machine exists, as well, in the version that we expects
-      -- TODO we just need a test for each transition
-      -- TODO together with that or replacing that we can also use the function is_valid_transition to check all valid transitions for a state
-      -- TODO but how do we create the new machine? we create one every time? why not?
-      -- TODO one good thing or following the normal path would be testing the if states are substates of the correct parents and stuff like that.
 
 ROLLBACK;
