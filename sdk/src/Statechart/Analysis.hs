@@ -7,6 +7,8 @@ import RIO.Set qualified as S
 import Statechart.Helpers
 import Statechart.Types
 
+-- TODO probably nothing in here is going to be used
+
 ------------
 -- PUBLIC --
 ------------

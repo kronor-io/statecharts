@@ -5,6 +5,8 @@ import Statechart.Types
 import RIO
 import Test.Hspec
 
+-- TODO we can get rid of this file
+
 spec :: Spec
 spec = return ()
 

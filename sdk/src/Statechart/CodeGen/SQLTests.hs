@@ -1,41 +1,56 @@
 -- | This module contains functions for going from charts to sql files.
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
-module Statechart.CodeGen.SQLTests where
+module Statechart.CodeGen.SQLTests(mkTest,genTest) where
 
-import Data.String.Interpolate (i, iii)
 import Data.Text as T
 import RIO
-import RIO.ByteString qualified as BS
-import RIO.Text qualified as T
-import Statechart.Helpers
 import Statechart.Types
-import System.FilePath.Posix (dropExtension)
+import GHC.RTS.Flags (ProfFlags(includeTSOs))
 
+------------
+-- PUBLIC --
+------------
 
+mkTest :: Chart StateName EventName -> SQLTest
+mkTest = undefined
 
-  {-
-in here there will be logic for gathering the information
-from the analysis and use it to generate the
-notify_state_machine sequences together we the redefinition
-of the function fsm.handle_state_events (or something like
-that) that I checked and it worked.
--}
+genTest :: SQLTest -> Text
+genTest = undefined
 
+-------------
+-- HELPERS --
+-------------
 
+data SQLTest = SQLTest
+  { chartname     :: Text
+  , actions       :: [Text]
+  , interceptions :: [Text]
+  , tests         :: [IndividualTest]
+  }
 
+data IndividualTest = IndividualTest
+  { source    :: Text
+  , transname :: Text
+  , target    :: Text
+  , on_entry  :: [Text]
+  }
 
--- given a path, we can generate a sql test for it
---genTest :: Path -> Text
---genTest = undefined
+-- | The total number of tests we intended to run.
+planNumber :: SQLTest -> Int
+planNumber = undefined
 
+-- | Generate the most part of the static stuff at the top, but includes the plan and the import of the functions file.
+genHeader :: Int -> Text
+genHeader = undefined
 
+-- | This add static checks for the action functions. Mostly a courtesy.
+genFnCheck :: Text -> Text
+genFnCheck = undefined
 
---layoutNotifyStateMachine = [iii| select fsm.notify_state_machine...etc |]
+-- | Used to generate a new definition of the action function so we can intercept its instead of letting it run.
+genInterception :: Text -> Text
+genInterception = undefined
 
---layoutReplaceEventHandler = [iii| create or replace function fsm.handle_machine_events...etc |]
-
--- TODO consider how similar the generation of SQL tests is
---to what we already have in terms of SQL generation, because
---we generate the sql charts. So should they be a single
---helper module and this kind of thing to make things smaller
---and more robust?
+-- | We use this to generate the each cluster of a transition test, which includes several lines.
+genTransitionTest :: IndividualTest -> Text
+genTransitionTest = undefined
