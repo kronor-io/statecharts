@@ -12,15 +12,14 @@ import Statechart.Types
 ------------
 
 mkTest :: Chart StateName EventName -> SQLTest
-mkTest = undefined
+mkTest = undefined -- TODO
 
 genTest :: SQLTest -> Text
 genTest SQLTest{..} =
     let pn = planNumber SQLTest{..}
-        schema = undefined SQLTest{..}
-        fnChecks = T.unlines (fnCheck schema <$> []) -- TODO
-        interceptions' = T.unlines (genInterception schema <$> []) -- TODO
-        transitions = T.unlines (genTransitionTest <$> []) -- TODO
+        fnChecks = T.unlines (fnCheck schema <$> actions)
+        interceptions' = T.unlines (genInterception schema <$> interceptions)
+        transitions = T.unlines (genTransitionTest initial <$> tests)
      in layout pn fnChecks interceptions' transitions
 
 -------------
@@ -29,6 +28,8 @@ genTest SQLTest{..} =
 
 data SQLTest = SQLTest
     { chartname :: Text
+    , schema :: Text
+    , initial :: Text
     , actions :: [Text]
     , interceptions :: [Text]
     , tests :: [IndividualTest]
@@ -36,7 +37,7 @@ data SQLTest = SQLTest
 
 data IndividualTest = IndividualTest
     { source :: Text
-    , transname :: Text
+    , transition :: Text
     , target :: Text
     , on_entry :: [Text]
     }
@@ -107,39 +108,22 @@ $$ begin perform intercepted_('#{schema}.#{fn}); return; end; $$ language plpgsq
 |]
 
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
-genTransitionTest :: IndividualTest -> Text
-genTransitionTest IndividualTest{..} =
-    T.unlines (catMaybes [Just starter, setter, Just notifier, Just statechecker, actionchecker])
+genTransitionTest :: Text -> IndividualTest -> Text
+genTransitionTest initial IndividualTest{..} =
+    T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers)
   where
     starter :: Text
     starter = [iii| select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset |]
     setter :: Maybe Text
-    setter = undefined -- TODO setter fires fore everything, except the first item
+    setter = if target == initial then Nothing else Just [iii||]
     notifier :: Text
-    notifier = [iii| ... |]
+    notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
-    statechecker = [iii| ... |]
-    actionchecker :: Maybe Text
-    actionchecker = undefined -- the one that is most uncertain
-
---smallest one, typical (we just check the initial state, basically)
---select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
---select is((select fsm.is_state_active(:shard,:mid,:initial)),true, 'state is created');
-
---small one
---select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
---select is((select fsm.is_state_active(:shard,:mid,:initial)),true, 'state is created');
---select is((select last_intercepted()),'invoice.created_action');
-
--- medium boy
---update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
---select fsm.notify_state_machine(:shard,:mid,'invoice.time.due');
---select is((select fsm.is_state_active(:shard,:mid,'due_date')),true, 'state is due_date');
---select is((select last_intercepted()),'invoice.due_date_action');
-
--- big boy
---select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
---update fsm.state_machine_state SET state_id = 'reminder1' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
---select fsm.notify_state_machine(:shard,:mid,'invoice.time.reminder2');
---select is((select fsm.is_state_active(:shard,:mid,'reminder2')),true, 'state is reminder2');
---select is((select last_intercepted()),'invoice.reminder2_action');
+    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,#{initial})),true, 'state is #{initial}');|]
+    actioncheckers :: [Maybe Text]
+    actioncheckers =
+      go =<< on_entry
+     where
+       go action =
+        [ Just [iii|select is((select last_intercepted()),'#{action}');|]
+        ]
