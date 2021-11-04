@@ -1,10 +1,11 @@
 -- | This module contains functions for going from charts to sql files.
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
-module Statechart.CodeGen.SQLTests (mkTest, genTest) where
+module Statechart.CodeGen.SQLTests (mkTest, genTest, writeSQLTests) where
 
 import Data.String.Interpolate
 import Data.Text as T
 import RIO
+import Statechart.Helpers
 import Statechart.Types
 
 ------------
@@ -12,33 +13,51 @@ import Statechart.Types
 ------------
 
 mkTest :: Chart StateName EventName -> SQLTest
-mkTest = undefined -- TODO
+mkTest Chart{..} =
+    let chartname = undefined -- TODO requires change in the main type "Chart"
+        schema = undefined -- TODO requires change in the main type "Chart"
+        -- TODO alternatively this info can be passed as an argument. actually thats probably better
+        initial_ = toText initial
+        actions = toText <$> getEventNames Chart{..}
+        tests = transitionTest Chart{..} <$> getAllChartTransitions Chart{..}
+     in SQLTest{..}
 
 genTest :: SQLTest -> Text
 genTest SQLTest{..} =
     let pn = planNumber SQLTest{..}
         fnChecks = T.unlines (fnCheck schema <$> actions)
-        interceptions' = T.unlines (genInterception schema <$> interceptions)
-        transitions = T.unlines (genTransitionTest initial <$> tests)
+        interceptions' = T.unlines (genInterception schema <$> actions)
+        transitions = T.unlines (genTransitionTest initial_ <$> tests)
      in layout pn fnChecks interceptions' transitions
+
+writeSQLTests :: FilePath -> [Text] -> IO ()
+writeSQLTests = undefined -- TODO not important, leave by last, only needed when integrating with the main repo
 
 -------------
 -- HELPERS --
 -------------
 
+transitionTest :: Chart StateName EventName -> Transition StateName EventName -> IndividualTest
+transitionTest chart t =
+    -- TODO this is the most important part
+    let source_ = toText (source t)
+        transition = toText (event' t)
+        target_ = toText (target t)
+        on_entry = undefined -- TODO whats wrong here? (lookupState sid (source t)) <$> getStateNames chart
+     in IndividualTest{..}
+
 data SQLTest = SQLTest
     { chartname :: Text
     , schema :: Text
-    , initial :: Text
+    , initial_ :: Text
     , actions :: [Text]
-    , interceptions :: [Text]
     , tests :: [IndividualTest]
     }
 
 data IndividualTest = IndividualTest
-    { source :: Text
+    { source_ :: Text
     , transition :: Text
-    , target :: Text
+    , target_ :: Text
     , on_entry :: [Text]
     }
 
@@ -47,8 +66,9 @@ planNumber :: SQLTest -> Text
 planNumber SQLTest{..} = T.pack (show (RIO.length actions + RIO.length tests))
 
 -- | The main layout for the SQL test file.
-layout :: Text -> Text -> Text -> Text -> Text
+layout :: Text -> Text -> Text -> Text -> Text -- FIXME this is shitty type
 layout pn fnChecks interceptions' transitions =
+  -- TODO the todos in here are bonus, if they are trouble ill just removed them, but we seem to have them for free
     [i|
 -----------------------------------------------------------------------------------------------
 --                                                                                           --
@@ -65,11 +85,11 @@ layout pn fnChecks interceptions' transitions =
 --                                            ***                                            --
 --                                                                                           --
 -----------------------------------------------------------------------------------------------
--- CHART NAME            :                                                                   --
--- CHART VERSION         :                                                                   --
--- NUMBER OF STATES      :                                                                   --
--- NUMBER OF TRANSITIONS :                                                                   --
--- NUMBER OF ACTIONS     :                                                                   --
+-- CHART NAME            : TODO                                                              --
+-- CHART VERSION         : TODO                                                              --
+-- NUMBER OF STATES      : TODO                                                              --
+-- NUMBER OF TRANSITIONS : TODO                                                              --
+-- NUMBER OF ACTIONS     : TODO                                                              --
 -----------------------------------------------------------------------------------------------
 BEGIN;
 select plan(#{pn}); -- (PG_TAP function)
@@ -109,21 +129,19 @@ $$ begin perform intercepted_('#{schema}.#{fn}); return; end; $$ language plpgsq
 
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
 genTransitionTest :: Text -> IndividualTest -> Text
-genTransitionTest initial IndividualTest{..} =
+genTransitionTest initial' IndividualTest{..} =
     T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers)
   where
     starter :: Text
     starter = [iii| select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset |]
     setter :: Maybe Text
-    setter = if target == initial then Nothing else Just [iii||]
+    setter = if target_ == initial' then Nothing else Just [iii||]
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
-    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,#{initial})),true, 'state is #{initial}');|]
+    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,#{initial'})),true, 'state is #{initial'}');|]
     actioncheckers :: [Maybe Text]
     actioncheckers =
-      go =<< on_entry
-     where
-       go action =
-        [ Just [iii|select is((select last_intercepted()),'#{action}');|]
-        ]
+        go <$> on_entry
+      where
+        go action = Just [iii|select is((select last_intercepted()),'#{action}');|]

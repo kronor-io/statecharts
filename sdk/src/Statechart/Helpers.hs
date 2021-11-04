@@ -41,6 +41,9 @@ getAllTransitions NormalState{..} = transitions
 getAllTransitions MultiState{..} = transitions ++ concatMap getAllTransitions subStates
 getAllTransitions Parallel{..} = transitions ++ concatMap getAllTransitions regions
 
+lookupState :: Chart s e -> StateName -> State s e
+lookupState = undefined
+
 getAllChartStates :: Chart s e -> [State s e]
 getAllChartStates Chart{..} = states ++ concatMap getAllSubStates states
 
