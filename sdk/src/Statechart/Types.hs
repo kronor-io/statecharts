@@ -15,7 +15,7 @@ instance AsText StateName where
     fromText = return . StateName
     toText (StateName n) = n
 
-newtype EventName = EventName Text deriving (Eq, Show)
+newtype EventName = EventName Text deriving (Eq, Show, Ord)
 
 instance AsText EventName where
     fromText = return . EventName
@@ -70,7 +70,13 @@ data Chart s e = Chart
 data Content e
     = Script Text -- TODO ActionName
     | Raise e
-    deriving (Show, Eq, Generic, ToJSON, FromJSON, Functor)
+    deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, Functor)
+
+instance AsText (Content e) where
+    fromText = return . Script
+    toText = \case
+      Script t -> t
+      Raise _ -> error "not used currently"
 
 data State s e
     = NormalState

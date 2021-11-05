@@ -7,6 +7,7 @@ import Data.Text as T
 import RIO
 import Statechart.Helpers
 import Statechart.Types
+import RIO.List (sort)
 
 ------------
 -- PUBLIC --
@@ -15,16 +16,16 @@ import Statechart.Types
 mkTest :: Text -> Text -> Chart StateName EventName -> SQLTest
 mkTest chartname schema Chart{..} =
     let initial_ = toText initial
-        actions = [] -- TODO this is wrong toText <$> getEventNames Chart{..}
+        actions = toText <$> getAllActions Chart{..}
         tests = transitionTest Chart{..} <$> getAllChartTransitions Chart{..}
     in SQLTest{..}
 
 genTest :: SQLTest -> Text
 genTest SQLTest{..} =
     let pn = planNumber SQLTest{..}
-        fnChecks = T.unlines (fnCheck schema <$> actions)
-        interceptions' = T.unlines (genInterception schema <$> actions)
-        transitions = T.unlines (genTransitionTest initial_ <$> tests)
+        fnChecks = T.unlines . sort $ (fnCheck <$> actions)
+        interceptions' = T.unlines . sort $ (genInterception <$> actions)
+        transitions = T.unlines . sort $ (genTransitionTest chartname initial_ <$> tests)
      in sqlTestLayout pn fnChecks interceptions' transitions
 
 writeSQLTests :: FilePath -> [Text] -> IO ()
@@ -115,33 +116,37 @@ ROLLBACK;
 -----------------------------------------------------------------------------------------------
 |]
 
--- | This add static checks for the action functions. Mostly a courtesy.
-fnCheck :: Text -> Text -> Text
-fnCheck schema fn = [iii| select is(function_exists('#{schema}','#{fn}'), true, '#{fn}'); |]
-
 -- | Used to generate a new definition of the action function so we can intercept its instead of letting it run.
-genInterception :: Text -> Text -> Text
-genInterception schema fn =
-    [i|
+genInterception :: Text -> Text
+genInterception dat =
+  let [schema,fn] = T.splitOn "." dat
+  in 
+    [iii|
 create or replace function #{schema}.#{fn}(event_payload fsm_event_payload) returns void as
 $$ begin perform intercepted_('#{schema}.#{fn}); return; end; $$ language plpgsql volatile strict;
 |]
 
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
-genTransitionTest :: Text -> IndividualTest -> Text
-genTransitionTest initial' IndividualTest{..} =
-    T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers)
+genTransitionTest :: Text -> Text -> IndividualTest -> Text
+genTransitionTest chartname initial' IndividualTest{..} =
+    T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""])
   where
     starter :: Text
-    starter = "select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset"
+    starter = [i|"select id as mid from fsm.start_machine_with_latest_statechart(1,'#{chartname}') \\gset"|]
     setter :: Maybe Text
-    setter = if target_ == initial' then Nothing else Just [iii| empty |] -- TODO
+    setter = if source_ == initial' then Nothing else Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{initial'}'; |]
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
-    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,#{initial'})),true, 'state is #{initial'}');|]
+    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,'#{target_}')),true);|]
     actioncheckers :: [Maybe Text]
     actioncheckers =
         go <$> on_entry
       where
         go action = Just [iii|select is((select last_intercepted()),'#{action}');|]
+
+-- | This add static checks for the action functions. Mostly a courtesy.
+fnCheck :: Text -> Text
+fnCheck dat = 
+  let [schema,fn] = T.splitOn "." dat
+  in [iii| select is(function_exists('#{schema}','#{fn}'), true); |]

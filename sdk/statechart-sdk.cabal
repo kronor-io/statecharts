@@ -15,7 +15,6 @@ build-type:     Simple
 
 library
   exposed-modules:
-      Statechart.Analysis
       Statechart.CodeGen.Haskell
       Statechart.CodeGen.SQL
       Statechart.CodeGen.SQLTests
@@ -100,7 +99,6 @@ test-suite statechart-sdk-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      AnalysisSpec
       CoreSpec
       Helper
       Plugin.Haskell.Chart1

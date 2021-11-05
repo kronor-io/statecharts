@@ -1,7 +1,7 @@
 module Statechart.Helpers where
 
 import RIO
-import RIO.List (nub)
+import RIO.List (nub,sort)
 import Statechart.Types
 
 -- TODO organize and delete the functions that are not been used anymore.
@@ -42,7 +42,7 @@ getAllTransitions MultiState{..} = transitions ++ concatMap getAllTransitions su
 getAllTransitions Parallel{..} = transitions ++ concatMap getAllTransitions regions
 
 lookupState :: Chart StateName e -> StateName -> Maybe (State StateName e)
-lookupState ch st = 
+lookupState ch st =
   foldr go Nothing (getAllChartStates ch)
  where
   go _ (Just x) = Just x
@@ -88,3 +88,13 @@ getParents chart state = case mapMaybe (aux []) (states chart) of
     aux acc NormalState{..} = if id_ == sid then Just acc else Nothing
     aux acc s@MultiState{..} = if id_ == sid then Just acc else aux2 subStates (s : acc)
     aux acc s@Parallel{..} = if id_ == sid then Just acc else aux2 regions (s : acc)
+
+getAllActions :: Ord e => Chart s e -> [Content e]
+getAllActions Chart{..} =
+  sort <$> actionFromStates =<< getAllChartStates Chart{..}
+ where
+  actionFromStates :: State s e -> [Content e]
+  actionFromStates state = 
+    case onEntry state of
+      Nothing -> []
+      Just xs -> [xs]
