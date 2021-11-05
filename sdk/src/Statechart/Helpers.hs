@@ -41,8 +41,12 @@ getAllTransitions NormalState{..} = transitions
 getAllTransitions MultiState{..} = transitions ++ concatMap getAllTransitions subStates
 getAllTransitions Parallel{..} = transitions ++ concatMap getAllTransitions regions
 
-lookupState :: Chart s e -> StateName -> State s e
-lookupState = undefined
+lookupState :: Chart StateName e -> StateName -> Maybe (State StateName e)
+lookupState ch st = 
+  foldr go Nothing (getAllChartStates ch)
+ where
+  go _ (Just x) = Just x
+  go a acc = if sid a == st then Just a else acc
 
 getAllChartStates :: Chart s e -> [State s e]
 getAllChartStates Chart{..} = states ++ concatMap getAllSubStates states

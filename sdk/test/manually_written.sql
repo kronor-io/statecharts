@@ -10,129 +10,83 @@
 --
 -----------------------------------------------------------------------------------------------
 BEGIN;
-      select plan(28);
-
-      ----------------------------------------------------
-      -- So we can know that an action that was specified in the charts actually exists in the database.
-      create or replace function function_exists(schema text, fname text) returns bool as
-      $$ BEGIN
-           IF NOT EXISTS (SELECT * FROM information_schema.routines WHERE routine_name = fname) -- TODO how constraint per schema?
-                                                                                                -- TODO you can also constraint by type if you feel like it
-           THEN           RETURN FALSE;
-           ELSE           RETURN TRUE;
-           END IF;
-         END
-      $$ language plpgsql strict;
-
-      ----------------------------------------------------
-      -- This table exists so we can check that a action was
-      -- called before we actually call the function, and we
-      -- register this call so we can scrutinize it down the
-      -- road.
-      create temporary table intercepted (id bigint not null generated always as identity,event text not null,event_date timestamptz not null default now());
-      -- We use this to check what was the last called action.
-      create or replace function last_intercepted() returns text as
-      $$
-        declare
-          foo intercepted;
-        begin
-          select * into foo from intercepted order by id desc limit 1;
-          return foo.event;
-         end
-      $$ language plpgsql strict;
-      -- We use this to register a new action in the table. Just a helper. This is functional sql now, I call the shots here.
-      create or replace function intercepted_(event_ text) returns void as
-      $$ begin insert into intercepted (event) values (event_); end $$ language plpgsql strict;
-
-      select is(function_exists('invoice','created_action'), true, 'created_action');
-      select is(function_exists('invoice','soft_reminder_action'), true, 'soft_reminder_action');
-      select is(function_exists('invoice','due_date_action'), true, 'due_date_action');
-      select is(function_exists('invoice','reminder1_action'), true, 'reminder1_action');
-      select is(function_exists('invoice','reminder2_action'), true, 'reminder2_action');
-      select is(function_exists('invoice','paid_more_than_min_action'), true, 'paid_more_than_min_action');
-      select is(function_exists('invoice','transferring_to_account_action'), true, 'transferring_to_account_action');
-      select is(function_exists('invoice','settled_action'), true, 'settled_action');
-
-      create or replace function invoice.created_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.created_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.due_date_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.due_date_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.reminder1_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.reminder1_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.reminder2_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.reminder2_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.debt_collection_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.debt_collection_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.paid_more_than_min_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.paid_more_than_min_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.transferring_to_account_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.transferring_to_account_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.settled_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.settled_action'); return; end; $$ language plpgsql volatile strict;
-      create or replace function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as
-      $$ begin perform intercepted_('invoice.soft_reminder_action'); return; end; $$ language plpgsql volatile strict;
-
-      \set shard     1::bigint
-      \set chartname '\'invoice_flow\''
-      \set initial   '\'created\''
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      select is((select fsm.is_state_active(:shard,:mid,:initial)),true, 'state is created');
-      select is((select last_intercepted()),'invoice.created_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.soft_reminder');
-      select is((select fsm.is_state_active(:shard,:mid,'in_progress_soft_reminder')),true, 'state is in_progress_soft_reminder');
-      select is((select last_intercepted()),'invoice.soft_reminder_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.due');
-      select is((select fsm.is_state_active(:shard,:mid,'due_date')),true, 'state is due_date');
-      select is((select last_intercepted()),'invoice.due_date_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'due_date' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.reminder1');
-      select is((select fsm.is_state_active(:shard,:mid,'reminder1')),true, 'state is reminder1');
-      select is((select last_intercepted()),'invoice.reminder1_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'reminder1' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.reminder2');
-      select is((select fsm.is_state_active(:shard,:mid,'reminder2')),true, 'state is reminder2');
-      select is((select last_intercepted()),'invoice.reminder2_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'reminder2' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.debt_collection');
-      select is((select fsm.is_state_active(:shard,:mid,'debt_collection_date')),true, 'state is debt_collection_date');
-      select is((select last_intercepted()),'invoice.debt_collection_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'debt_collection_date' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.pay.enough');
-      select is((select fsm.is_state_active(:shard,:mid,'paid_more_than_min')),true, 'state is paid_more_than_min');
-      select is((select last_intercepted()),'invoice.paid_more_than_min_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'paid_more_than_min' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.soft_reminder');
-      select is((select fsm.is_state_active(:shard,:mid,'minimum_payment_soft_reminder')),true, 'state is minimum_payment_soft_reminder');
-      select is((select last_intercepted()),'invoice.soft_reminder_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'minimum_payment_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.time.due');
-      select is((select fsm.is_state_active(:shard,:mid,'transferring_to_account')),true, 'state is transferring_to_account');
-      select is((select last_intercepted()),'invoice.transferring_to_account_action');
-
-      select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
-      update fsm.state_machine_state SET state_id = 'transferring_to_account' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
-      select fsm.notify_state_machine(:shard,:mid,'invoice.settle');
-      select is((select fsm.is_state_active(:shard,:mid,'settled')),true, 'state is transferring_to_account');
-      select is((select last_intercepted()),'invoice.settled_action');
-
-      select finish();
-
+select plan(28);
+\i....
+select is(function_exists('invoice','created_action'), true, 'created_action');
+select is(function_exists('invoice','soft_reminder_action'), true, 'soft_reminder_action');
+select is(function_exists('invoice','due_date_action'), true, 'due_date_action');
+select is(function_exists('invoice','reminder1_action'), true, 'reminder1_action');
+select is(function_exists('invoice','reminder2_action'), true, 'reminder2_action');
+select is(function_exists('invoice','paid_more_than_min_action'), true, 'paid_more_than_min_action');
+select is(function_exists('invoice','transferring_to_account_action'), true, 'transferring_to_account_action');
+select is(function_exists('invoice','settled_action'), true, 'settled_action');
+create or replace function invoice.created_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.created_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.due_date_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.due_date_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.reminder1_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.reminder1_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.reminder2_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.reminder2_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.debt_collection_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.debt_collection_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.paid_more_than_min_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.paid_more_than_min_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.transferring_to_account_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.transferring_to_account_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.settled_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.settled_action'); return; end; $$ language plpgsql volatile strict;
+create or replace function invoice.soft_reminder_action(event_payload fsm_event_payload) returns void as
+$$ begin perform intercepted_('invoice.soft_reminder_action'); return; end; $$ language plpgsql volatile strict;
+\set shard     1::bigint
+\set chartname '\'invoice_flow\''
+\set initial   '\'created\''
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+select is((select fsm.is_state_active(:shard,:mid,:initial)),true, 'state is created');
+select is((select last_intercepted()),'invoice.created_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.soft_reminder');
+select is((select fsm.is_state_active(:shard,:mid,'in_progress_soft_reminder')),true, 'state is in_progress_soft_reminder');
+select is((select last_intercepted()),'invoice.soft_reminder_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.due');
+select is((select fsm.is_state_active(:shard,:mid,'due_date')),true, 'state is due_date');
+select is((select last_intercepted()),'invoice.due_date_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'due_date' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.reminder1');
+select is((select fsm.is_state_active(:shard,:mid,'reminder1')),true, 'state is reminder1');
+select is((select last_intercepted()),'invoice.reminder1_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'reminder1' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.reminder2');
+select is((select fsm.is_state_active(:shard,:mid,'reminder2')),true, 'state is reminder2');
+select is((select last_intercepted()),'invoice.reminder2_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'reminder2' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.debt_collection');
+select is((select fsm.is_state_active(:shard,:mid,'debt_collection_date')),true, 'state is debt_collection_date');
+select is((select last_intercepted()),'invoice.debt_collection_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'debt_collection_date' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.pay.enough');
+select is((select fsm.is_state_active(:shard,:mid,'paid_more_than_min')),true, 'state is paid_more_than_min');
+select is((select last_intercepted()),'invoice.paid_more_than_min_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'paid_more_than_min' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.soft_reminder');
+select is((select fsm.is_state_active(:shard,:mid,'minimum_payment_soft_reminder')),true, 'state is minimum_payment_soft_reminder');
+select is((select last_intercepted()),'invoice.soft_reminder_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'minimum_payment_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.time.due');
+select is((select fsm.is_state_active(:shard,:mid,'transferring_to_account')),true, 'state is transferring_to_account');
+select is((select last_intercepted()),'invoice.transferring_to_account_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \gset
+update fsm.state_machine_state SET state_id = 'transferring_to_account' where state_machine_id = :mid and shard_id = :shard and state_id = :initial;
+select fsm.notify_state_machine(:shard,:mid,'invoice.settle');
+select is((select fsm.is_state_active(:shard,:mid,'settled')),true, 'state is transferring_to_account');
+select is((select last_intercepted()),'invoice.settled_action');
+select finish();
 ROLLBACK;

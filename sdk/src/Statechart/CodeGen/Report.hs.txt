@@ -1,0 +1,14 @@
+generateReports :: [Chart a b] -> [Report]
+writeReportsVersioned :: [Report] -> IO ()
+data Report = Report
+  { name        :: Text
+  , version     :: Text
+  , hash        :: Text
+  , depth       :: Nat
+  , states      :: Nat
+  , parents     :: Nat
+  , transitions :: Nat
+  , actions     :: Nat
+  , paths       :: Nat
+  , loops       :: Nat
+  }

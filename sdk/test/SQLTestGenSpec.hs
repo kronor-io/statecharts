@@ -2,69 +2,212 @@ module SQLTestGenSpec where
 
 import Statechart.Analysis
 import Statechart.Types
+import Data.String.Interpolate
 import RIO
 import Test.Hspec
-
--- TODO we can get rid of this file
+import Statechart.SCXML (parse)
+import Statechart.CodeGen.SQLTests
+import RIO.ByteString.Lazy qualified as Lazy
 
 spec :: Spec
-spec = return ()
+spec = do
+      describe "manually written pipeline" $ do
+            let parsed = case parse manualSCXML of -- Either Text (Chart StateName EventName)
+                  Left _ -> undefined
+                  Right r -> r
+            let sqlTest = genTest . mkTest "schema_name_flow" "schema_name" $ parsed
+            it "should generate what we expected" $ sqlTest `shouldBe` expectedSQL
 
--- | Example of how one path of the invoice_flow might look.
--- We can use this to create SQL tests.
--- We can use the number of tests to specify the pgTap "prove(n)"
-examplePath :: Path
-examplePath =
+manualSCXML :: Lazy.ByteString
+manualSCXML = [i|
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              version="1.0"
+              initial="initial_state_top">
+    <state id="initial_state_top" name="">
+        <initial>
+            <transition target="initial_state_top_child"/>
+        </initial>
+        <state id="initial_state_top_child" name="">
+            <initial>
+                <transition target="initial_state"/>
+            </initial>
+            <state id="initial_state" name="">
+                <transition event="schema_name.time.due" target="due_date"/>
+                <transition event="schema_name.time.soft_reminder" target="in_progress_soft_reminder"/>
+                <onentry>
+                    <script src="schema_name.action01" />
+                </onentry>
+            </state>
+            <state id="due_date" name="">
+                <transition event="schema_name.time.reminder1" target="reminder1"/>
+                <onentry>
+                    <script src="schema_name.action02" />
+                </onentry>
+            </state>
+            <state id="reminder1" name="">
+                <transition event="schema_name.time.reminder2" target="reminder2"/>
+                <onentry>
+                    <script src="schema_name.action03" />
+                </onentry>
+            </state>
+            <state id="reminder2" name="">
+                <transition event="schema_name.time.debt_collection" target="debt_collection_date"/>
+                <onentry>
+                    <script src="schema_name.action04" />
+                </onentry>
+            </state>
+            <final id="debt_collection_date" name="">
+                <onentry>
+                    <script src="schema_name.action05" />
+                </onentry>
+            </final>
+            <state id="in_progress_soft_reminder" name="">
+                <transition event="schema_name.time.due" target="due_date"/>
+                <onentry>
+                    <script src="schema_name.action06" />
+                </onentry>
+            </state>
+            <transition event="schema_name.pay.enough" target="minimum_payment"/>
+        </state>
+        <state id="minimum_payment" name="">
+            <initial>
+                <transition target="paid_more_than_min"/>
+            </initial>
+            <state id="paid_more_than_min" name="">
+                <onentry>
+                    <script src="schema_name.action07" />
+                </onentry>
+                <transition event="schema_name.time.soft_reminder" target="minimum_payment_soft_reminder"/>
+                <transition event="schema_name.time.due" target="transferring_to_account"/>
+                <transition event="schema_name.time.past_due" target="transferring_to_account"/>
+            </state>
+            <state id="minimum_payment_soft_reminder" name="">
+                <transition event="schema_name.time.due" target="transferring_to_account"/>
+                <onentry>
+                    <script src="schema_name.action03" />
+                </onentry>
+            </state>
+            <final id="transferring_to_account" name="">
+                <onentry>
+                    <script src="schema_name.action08" />
+                </onentry>
+            </final>
+        </state>
+        <transition event="done.state.debt_collection_date" target="debt_collection"/>
+        <transition event="done.state.minimum_payment" target="transferred_to_account"/>
+        <transition event="schema_name.settle" target="settled"/>
+    </state>
+    <final id="debt_collection" name="">
+    </final>
+    <final id="transferred_to_account" name="">
+    </final>
+    <final id="settled" name="">
+        <onentry>
+            <script src="schema_name.action09" />
+        </onentry>
+    </final>
+</scxml>
+|]
 
--- TODO this is probably not going to be used anymore
-
-  [ Hop Nothing
-        (StateName "settling/in_progress/created")
-        ["invoice.created_action"]
-  , Hop (Just (EventName "invoice.time.soft_reminder"))
-        (StateName "settling/in_progress/in_progress_soft_reminder")
-        ["invoice.soft_reminder_action"]
-  , Hop (Just (EventName "invoice.time.due"))
-        (StateName "settling/in_progress/due_date")
-        ["invoice.due_date_action"]
-  , Hop (Just (EventName "invoice.time.reminder1"))
-        (StateName "settling/in_progress/reminder1")
-        ["invoice.reminder1_action"]
-  , Hop (Just (EventName "invoice.time.reminder2"))
-        (StateName "settling/in_progress/reminder2")
-        ["invoice.reminder2_action"]
-  , Hop (Just (EventName "invoice.time.debt_collection"))
-        (StateName "settling/in_progress/debt_collection_date")
-        []
-  , Hop (Just (EventName "invoice.pay.enough"))
-        (StateName "settling/minimum_payment/paid_more_than_min")
-        ["invoice.paid_more_than_min_action"]
-  , Hop (Just (EventName "invoice.time.soft_reminder"))
-        (StateName "settling/minimum_payment/minimum_payment_soft_reminder")
-        ["invoice.soft_reminder_action"]
-  , Hop (Just (EventName "invoice.time.due"))
-        (StateName "settling/minimum_payment/transferring_to_account")
-        ["invoice.transferring_to_account_action"]
-  , Hop (Just (EventName "invoice.settle"))
-        (StateName "settled")
-        ["invoice.invoice_settled_action"]
-  ]
-      alter function invoice.created_action(event_payload fsm_event_payload) rename to ORIGINAL_created_action;
-      alter function invoice.soft_reminder_action(event_payload fsm_event_payload) rename to ORIGINAL_soft_reminder_action;
-      alter function invoice.due_date_action(event_payload fsm_event_payload) rename to ORIGINAL_due_date_action;
-      alter function invoice.reminder1_action(event_payload fsm_event_payload) rename to ORIGINAL_reminder1_action;
-      alter function invoice.reminder2_action(event_payload fsm_event_payload) rename to ORIGINAL_reminder2_action;
-      alter function invoice.paid_more_than_min_action(event_payload fsm_event_payload) rename to ORIGINAL_paid_more_than_min_action;
-      alter function invoice.transferring_to_account_action(event_payload fsm_event_payload) rename to ORIGINAL_transferring_to_account_action;
-      alter function invoice.invoice_settled_action(event_payload fsm_event_payload) rename to ORIGINAL_settled_action;
-      select id as machine_id from fsm.start_machine_with_latest_statechart(1, 'invoice_flow') \gset
-      select count(*) from fsm.state_machine_state where state_id = 'settling';
-      select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-      select count(*) from fsm.state_machine_state where state_id = 'created';
-      with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.created_action'::text) from last_;
-      select fsm.notify_state_machine(1::bigint, :machine_id::bigint, 'invoice.time.soft_reminder');
-      select count(*) from fsm.state_machine_state where state_id = 'settling';
-      select count(*) from fsm.state_machine_state where state_id = 'in_progress';
-      select count(*) from fsm.state_machine_state where state_id = 'in_progress_soft_reminder';
-      with last_ as (select * from last_intercepted()) select is(last_.event, 'invoice.soft_reminder_action'::text) from last_;
-      select finish();
+expectedSQL :: Text
+expectedSQL = [i|
+-----------------------------------------------------------------------------------------------
+--                                                                                           --
+--                                        -----------                                        --
+--                                        - WARNING -                                        --
+--                                        -----------                                        --
+--                                                                                           --
+--                                            ***                                            --
+--                                                                                           --
+--                                   DO NOT EDIT THIS FILE                                   --
+--                               IT WAS AUTOMATICALLY GENERATED                              --
+--                                CHANGES MAY BE OVERWRITTEN                                 --
+--                                                                                           --
+--                                            ***                                            --
+--                                                                                           --
+-----------------------------------------------------------------------------------------------
+BEGIN;
+select plan(24); -- (PG_TAP function)
+\\i statecharts/test/setup_helpers.sql
+-----------------------------------------------------------------------------------------------
+-- FUNCTION CHECKS ----------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------
+select is(function_exists('schema_name','action01'), true, 'action01');
+select is(function_exists('schema_name','action02'), true, 'action02');
+select is(function_exists('schema_name','action03'), true, 'action03');
+select is(function_exists('schema_name','action04'), true, 'action04');
+select is(function_exists('schema_name','action05'), true, 'action05');
+select is(function_exists('schema_name','action06'), true, 'action06');
+select is(function_exists('schema_name','action07'), true, 'action07');
+select is(function_exists('schema_name','action08'), true, 'action08');
+-----------------------------------------------------------------------------------------------
+-- INTERCEPTIONS ------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------
+create or replace function schema_name.action01(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action01'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action02(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action02'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action02(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action02'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action03(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action03'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action04(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action04'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action05(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action05'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action06(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action06'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action07(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action07'); return; end; $$ language plpgsql volatile strict;
+create or replace function schema_name.action08(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action08'); return; end; $$ language plpgsql volatile strict;
+-----------------------------------------------------------------------------------------------
+-- TRANSITIONS TESTS --------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+select is((select fsm.is_state_active(:shard,:mid,'initial_state')),true, 'state is created');
+select is((select last_intercepted()),'schema_name.created_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.soft_reminder');
+select is((select fsm.is_state_active(:shard,:mid,'in_progress_soft_reminder')),true, 'state is in_progress_soft_reminder');
+select is((select last_intercepted()),'schema_name.soft_reminder_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'in_progress_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.due');
+select is((select fsm.is_state_active(:shard,:mid,'due_date')),true, 'state is due_date');
+select is((select last_intercepted()),'schema_name.due_date_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'due_date' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.reminder1');
+select is((select fsm.is_state_active(:shard,:mid,'reminder1')),true, 'state is reminder1');
+select is((select last_intercepted()),'schema_name.reminder1_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'reminder1' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.reminder2');
+select is((select fsm.is_state_active(:shard,:mid,'reminder2')),true, 'state is reminder2');
+select is((select last_intercepted()),'schema_name.reminder2_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'reminder2' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.debt_collection');
+select is((select fsm.is_state_active(:shard,:mid,'debt_collection_date')),true, 'state is debt_collection_date');
+select is((select last_intercepted()),'schema_name.debt_collection_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'debt_collection_date' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.pay.enough');
+select is((select fsm.is_state_active(:shard,:mid,'paid_more_than_min')),true, 'state is paid_more_than_min');
+select is((select last_intercepted()),'schema_name.paid_more_than_min_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'paid_more_than_min' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.soft_reminder');
+select is((select fsm.is_state_active(:shard,:mid,'minimum_payment_soft_reminder')),true, 'state is minimum_payment_soft_reminder');
+select is((select last_intercepted()),'schema_name.soft_reminder_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'minimum_payment_soft_reminder' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.time.due');
+select is((select fsm.is_state_active(:shard,:mid,'transferring_to_account')),true, 'state is transferring_to_account');
+select is((select last_intercepted()),'schema_name.transferring_to_account_action');
+select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset
+update fsm.state_machine_state SET state_id = 'transferring_to_account' where state_machine_id = :mid and shard_id = :shard and state_id = 'initial_state';
+select fsm.notify_state_machine(:shard,:mid,'schema_name.settle');
+select is((select fsm.is_state_active(:shard,:mid,'settled')),true, 'state is transferring_to_account');
+select is((select last_intercepted()),'schema_name.settled_action');
+-----------------------------------------------------------------------------------------------
+-- FINISHING ----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------
+select finish(); -- (PG_TAP function)
+ROLLBACK;
+-----------------------------------------------------------------------------------------------
+-- END ----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------
+|]

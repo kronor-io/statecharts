@@ -12,15 +12,12 @@ import Statechart.Types
 -- PUBLIC --
 ------------
 
-mkTest :: Chart StateName EventName -> SQLTest
-mkTest Chart{..} =
-    let chartname = undefined -- TODO requires change in the main type "Chart"
-        schema = undefined -- TODO requires change in the main type "Chart"
-        -- TODO alternatively this info can be passed as an argument. actually thats probably better
-        initial_ = toText initial
-        actions = toText <$> getEventNames Chart{..}
+mkTest :: Text -> Text -> Chart StateName EventName -> SQLTest
+mkTest chartname schema Chart{..} =
+    let initial_ = toText initial
+        actions = [] -- TODO this is wrong toText <$> getEventNames Chart{..}
         tests = transitionTest Chart{..} <$> getAllChartTransitions Chart{..}
-     in SQLTest{..}
+    in SQLTest{..}
 
 genTest :: SQLTest -> Text
 genTest SQLTest{..} =
@@ -28,10 +25,15 @@ genTest SQLTest{..} =
         fnChecks = T.unlines (fnCheck schema <$> actions)
         interceptions' = T.unlines (genInterception schema <$> actions)
         transitions = T.unlines (genTransitionTest initial_ <$> tests)
-     in layout pn fnChecks interceptions' transitions
+     in sqlTestLayout pn fnChecks interceptions' transitions
 
 writeSQLTests :: FilePath -> [Text] -> IO ()
-writeSQLTests = undefined -- TODO not important, leave by last, only needed when integrating with the main repo
+writeSQLTests path xs =
+    undefined -- foldM go  xs
+ where
+    go a acc = undefined
+    -- TODO remember that file name should end in ".pg"
+    -- TODO just build correct file name here
 
 -------------
 -- HELPERS --
@@ -39,11 +41,15 @@ writeSQLTests = undefined -- TODO not important, leave by last, only needed when
 
 transitionTest :: Chart StateName EventName -> Transition StateName EventName -> IndividualTest
 transitionTest chart t =
-    -- TODO this is the most important part
     let source_ = toText (source t)
         transition = toText (event' t)
         target_ = toText (target t)
-        on_entry = undefined -- TODO whats wrong here? (lookupState sid (source t)) <$> getStateNames chart
+        on_entry =
+          case lookupState chart (source t) of -- <$> getStateNames chart
+            Nothing -> []
+            Just s -> case onEntry s of
+                        Nothing -> []
+                        Just (Script oe) -> [oe]
      in IndividualTest{..}
 
 data SQLTest = SQLTest
@@ -66,9 +72,8 @@ planNumber :: SQLTest -> Text
 planNumber SQLTest{..} = T.pack (show (RIO.length actions + RIO.length tests))
 
 -- | The main layout for the SQL test file.
-layout :: Text -> Text -> Text -> Text -> Text -- FIXME this is shitty type
-layout pn fnChecks interceptions' transitions =
-  -- TODO the todos in here are bonus, if they are trouble ill just removed them, but we seem to have them for free
+sqlTestLayout :: Text -> Text -> Text -> Text -> Text -- FIXME this is a shitty type
+sqlTestLayout pn fnChecks interceptions' transitions =
     [i|
 -----------------------------------------------------------------------------------------------
 --                                                                                           --
@@ -85,14 +90,9 @@ layout pn fnChecks interceptions' transitions =
 --                                            ***                                            --
 --                                                                                           --
 -----------------------------------------------------------------------------------------------
--- CHART NAME            : TODO                                                              --
--- CHART VERSION         : TODO                                                              --
--- NUMBER OF STATES      : TODO                                                              --
--- NUMBER OF TRANSITIONS : TODO                                                              --
--- NUMBER OF ACTIONS     : TODO                                                              --
------------------------------------------------------------------------------------------------
 BEGIN;
 select plan(#{pn}); -- (PG_TAP function)
+\\i statecharts/test/setup_helpers.sql
 -----------------------------------------------------------------------------------------------
 -- FUNCTION CHECKS ----------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------
@@ -111,7 +111,7 @@ select plan(#{pn}); -- (PG_TAP function)
 select finish(); -- (PG_TAP function)
 ROLLBACK;
 -----------------------------------------------------------------------------------------------
--- END ---------------------------------------------------------------------------------------
+-- END ----------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------
 |]
 
@@ -133,9 +133,9 @@ genTransitionTest initial' IndividualTest{..} =
     T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers)
   where
     starter :: Text
-    starter = [iii| select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset |]
+    starter = "select id as mid from fsm.start_machine_with_latest_statechart(:shard,:chartname) \\gset"
     setter :: Maybe Text
-    setter = if target_ == initial' then Nothing else Just [iii||]
+    setter = if target_ == initial' then Nothing else Just [iii| empty |] -- TODO
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
