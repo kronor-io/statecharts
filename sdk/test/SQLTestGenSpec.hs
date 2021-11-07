@@ -15,7 +15,7 @@ spec = do
             let parsed = case parse manualSCXML of -- Either Text (Chart StateName EventName)
                   Left _ -> undefined
                   Right r -> r
-            let sqlTest = genTest . mkTest "someflow" "schema_name" $ parsed
+            let sqlTest = genTest parsed $ mkTest "someflow" parsed
             --it "should generate what we expected" $ T.lines sqlTest `shouldBe` T.lines expectedSQL
             it "should generate what we expected" $ sqlTest `shouldBe` expectedSQL
 
@@ -74,19 +74,17 @@ select plan(7); -- (PG_TAP function)
 select is(function_exists('schema_name','action01'), true);
 select is(function_exists('schema_name','action02'), true);
 select is(function_exists('schema_name','action03'), true);
+
 -----------------------------------------------------------------------------------------------
 -- INTERCEPTIONS ------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------
 create or replace function schema_name.action01(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action01'); return; end; $$ language plpgsql volatile strict;
 create or replace function schema_name.action02(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action02'); return; end; $$ language plpgsql volatile strict;
 create or replace function schema_name.action03(event_payload fsm_event_payload) returns void as $$ begin perform intercepted_('schema_name.action03'); return; end; $$ language plpgsql volatile strict;
+
 -----------------------------------------------------------------------------------------------
 -- TRANSITIONS TESTS --------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------
-select id as mid from fsm.start_machine_with_latest_statechart(1,'someflow') \\gset
-select is((select fsm.is_state_active(1,:mid,'initial_state')),true);
-select is((select last_intercepted()),'schema_name.action01');
-
 select id as mid from fsm.start_machine_with_latest_statechart(1,'someflow') \\gset
 select fsm.notify_state_machine(1,:mid,'event01');
 select is((select fsm.is_state_active(1,:mid,'state02')),true);
@@ -107,6 +105,7 @@ update fsm.state_machine_state SET state_id = 'state03' where state_machine_id =
 select fsm.notify_state_machine(1,:mid,'event04');
 select is((select fsm.is_state_active(1,:mid,'state04')),true);
 select is((select last_intercepted()),'schema_name.action03');
+
 
 -----------------------------------------------------------------------------------------------
 -- FINISHING ----------------------------------------------------------------------------------

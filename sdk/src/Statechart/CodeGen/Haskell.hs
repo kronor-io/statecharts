@@ -13,6 +13,7 @@ import Statechart.Types as Types
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath.Posix (dropExtension)
 import Text.Casing
+import Data.List qualified as List
 
 writeHaskells :: FilePath -> [(FilePath, Text)] -> IO ()
 writeHaskells targetPath xs = do

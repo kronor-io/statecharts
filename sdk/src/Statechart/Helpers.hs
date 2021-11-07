@@ -3,6 +3,7 @@ module Statechart.Helpers where
 import RIO
 import RIO.List (nub,sort)
 import Statechart.Types
+import Statechart.Types (Chart(initial), State (subStates))
 
 -- TODO organize and delete the functions that are not been used anymore.
 
@@ -57,6 +58,7 @@ getAllChartTransitions Chart{..} = concatMap getAllTransitions states
 isFinal :: State s e -> Bool
 isFinal = \case Final{} -> True; _ -> False
 
+-- TODO i think this is wrong...
 isInitial :: Eq s => Chart s e -> State s e -> Bool
 isInitial chart state = initial chart == id_ || any aux (states chart)
   where
@@ -68,9 +70,12 @@ isInitial chart state = initial chart == id_ || any aux (states chart)
 
 getInitialState :: Chart StateName EventName -> State StateName EventName
 getInitialState chart =
-    case filter (isInitial chart) (getAllChartStates chart) of
-        [ini] -> ini
-        _ -> error "impossible"
+  let ccc = initial chart
+      fff = fromMaybe undefined $ lookupState chart ccc
+      sub = filter (isInitial chart) $ getAllSubStates fff
+   in undefined  -- TODO
+                -- we need to keep going down umtil a state with  no subStates and that is also initial
+                -- this seems to be the only way to get the true initial state
 
 -- | Returns all the parent states of a given state with the most inmediate parent
 -- as the first element all the wayt to the root.
@@ -94,7 +99,7 @@ getAllActions Chart{..} =
   sort <$> actionFromStates =<< getAllChartStates Chart{..}
  where
   actionFromStates :: State s e -> [Content e]
-  actionFromStates state = 
+  actionFromStates state =
     case onEntry state of
       Nothing -> []
       Just xs -> [xs]

@@ -5,36 +5,35 @@ module Statechart.CodeGen.SQLTests (mkTest, genTest, writeSQLTests) where
 import Data.String.Interpolate
 import Data.Text as T
 import RIO
+import RIO.ByteString qualified as BS
+import RIO.List (sort)
 import Statechart.Helpers
 import Statechart.Types
-import RIO.List (sort)
+import System.FilePath.Posix
 
 ------------
 -- PUBLIC --
 ------------
 
-mkTest :: Text -> Text -> Chart StateName EventName -> SQLTest
-mkTest chartname schema Chart{..} =
+mkTest :: Text -> Chart StateName EventName -> SQLTest
+mkTest chartname Chart{..} =
     let initial_ = toText initial
         actions = toText <$> getAllActions Chart{..}
         tests = transitionTest Chart{..} <$> getAllChartTransitions Chart{..}
-    in SQLTest{..}
+     in SQLTest{..}
 
-genTest :: SQLTest -> Text
-genTest SQLTest{..} =
+genTest :: Chart StateName EventName -> SQLTest -> Text
+genTest chart SQLTest{..} =
     let pn = planNumber SQLTest{..}
         fnChecks = T.unlines . sort $ (fnCheck <$> actions)
         interceptions' = T.unlines . sort $ (genInterception <$> actions)
-        transitions = T.unlines . sort $ (genTransitionTest chartname initial_ <$> tests)
+        transitions = T.unlines . sort $ (genTransitionTest chart chartname <$> tests)
      in sqlTestLayout pn fnChecks interceptions' transitions
 
-writeSQLTests :: FilePath -> [Text] -> IO ()
-writeSQLTests path xs =
-    undefined -- foldM go  xs
- where
-    go a acc = undefined
-    -- TODO remember that file name should end in ".pg"
-    -- TODO just build correct file name here
+writeSQLTests :: FilePath -> [(Text, Text)] -> IO ()
+writeSQLTests path xs = do
+    let finalpath p = path <> "/" <> dropExtensions (T.unpack p) <> ".pg"
+    forM_ xs (\(p, bod) -> BS.writeFile (finalpath p) (RIO.encodeUtf8 bod))
 
 -------------
 -- HELPERS --
@@ -46,16 +45,15 @@ transitionTest chart t =
         transition = toText (event' t)
         target_ = toText (target t)
         on_entry =
-          case lookupState chart (source t) of -- <$> getStateNames chart
-            Nothing -> []
-            Just s -> case onEntry s of
-                        Nothing -> []
-                        Just (Script oe) -> [oe]
+            case lookupState chart (target t) of -- <$> getStateNames chart
+                Nothing -> []
+                Just s -> case onEntry s of
+                    Nothing -> []
+                    Just (Script oe) -> [oe]
      in IndividualTest{..}
 
 data SQLTest = SQLTest
     { chartname :: Text
-    , schema :: Text
     , initial_ :: Text
     , actions :: [Text]
     , tests :: [IndividualTest]
@@ -119,22 +117,31 @@ ROLLBACK;
 -- | Used to generate a new definition of the action function so we can intercept its instead of letting it run.
 genInterception :: Text -> Text
 genInterception dat =
-  let [schema,fn] = T.splitOn "." dat
-  in 
-    [iii|
+    let [schema, fn] = T.splitOn "." dat
+     in [iii|
 create or replace function #{schema}.#{fn}(event_payload fsm_event_payload) returns void as
-$$ begin perform intercepted_('#{schema}.#{fn}); return; end; $$ language plpgsql volatile strict;
+$$ begin perform intercepted_('#{schema}.#{fn}'); return; end; $$ language plpgsql volatile strict;
 |]
 
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
-genTransitionTest :: Text -> Text -> IndividualTest -> Text
-genTransitionTest chartname initial' IndividualTest{..} =
+genTransitionTest :: Chart StateName EventName -> Text -> IndividualTest -> Text
+genTransitionTest chart chartname IndividualTest{..} =
     T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""])
   where
     starter :: Text
-    starter = [i|"select id as mid from fsm.start_machine_with_latest_statechart(1,'#{chartname}') \\gset"|]
+    starter =
+     let sanitized = dropExtensions (T.unpack chartname)
+      in [i|select id as mid from fsm.start_machine_with_latest_statechart(1,'#{sanitized}') \\gset|]
     setter :: Maybe Text
-    setter = if source_ == initial' then Nothing else Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{initial'}'; |]
+    setter =
+      let ss = lookupState chart (StateName source_)
+       in case ss of 
+            Nothing -> Nothing 
+            Just s -> if isInitial chart s
+                      then Nothing -- error . show $ (source_,initial')
+                      else
+                        let l :: Text = ""--last initials'
+                          in Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{l}'; |]
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
@@ -147,6 +154,6 @@ genTransitionTest chartname initial' IndividualTest{..} =
 
 -- | This add static checks for the action functions. Mostly a courtesy.
 fnCheck :: Text -> Text
-fnCheck dat = 
-  let [schema,fn] = T.splitOn "." dat
-  in [iii| select is(function_exists('#{schema}','#{fn}'), true); |]
+fnCheck dat =
+    let [schema, fn] = T.splitOn "." dat
+     in [iii|select is(function_exists('#{schema}','#{fn}'), true);|]
