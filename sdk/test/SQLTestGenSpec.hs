@@ -92,8 +92,7 @@ select is((select last_intercepted()),'schema_name.action02');
 
 select id as mid from fsm.start_machine_with_latest_statechart(1,'someflow') \\gset
 select fsm.notify_state_machine(1,:mid,'event02');
-select is((select fsm.is_state_active(1,:mid,'state04')),true);
-select is((select last_intercepted()),'schema_name.action03');
+select is((select fsm.is_state_active(1,:mid,'state03')),true);
 
 select id as mid from fsm.start_machine_with_latest_statechart(1,'someflow') \\gset
 update fsm.state_machine_state SET state_id = 'state02' where state_machine_id = :mid and shard_id = 1 and state_id = 'initial_state';
