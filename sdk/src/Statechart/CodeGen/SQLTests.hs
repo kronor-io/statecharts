@@ -126,7 +126,7 @@ $$ begin perform intercepted_('#{schema}.#{fn}'); return; end; $$ language plpgs
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
 genTransitionTest :: Chart StateName EventName -> Text -> IndividualTest -> Text
 genTransitionTest chart chartname IndividualTest{..} =
-    T.unlines (catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""])
+    T.unlines . RIO.filter (not . T.null) . catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""]
   where
     starter :: Text
     starter =
