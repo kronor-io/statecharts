@@ -130,18 +130,19 @@ genTransitionTest chart chartname IndividualTest{..} =
   where
     starter :: Text
     starter =
-     let sanitized = dropExtensions (T.unpack chartname)
-      in [i|select id as mid from fsm.start_machine_with_latest_statechart(1,'#{sanitized}') \\gset|]
+        let sanitized = dropExtensions (T.unpack chartname)
+         in [i|select id as mid from fsm.start_machine_with_latest_statechart(1,'#{sanitized}') \\gset|]
     setter :: Maybe Text
     setter =
-      let ss = lookupState chart (StateName source_)
-       in case ss of 
-            Nothing -> Nothing 
-            Just s -> if isInitial chart s
-                      then Nothing -- error . show $ (source_,initial')
-                      else
-                        let l :: Text = ""--last initials'
-                          in Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{l}'; |]
+        let ss = lookupState chart (StateName source_)
+         in case ss of
+                Nothing -> Nothing
+                Just s ->
+                    if isInitial chart s
+                        then Nothing -- error . show $ (source_,initial')
+                        else
+                            let (StateName l) = initial chart
+                             in Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{l}'; |]
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
