@@ -126,7 +126,7 @@ $$ begin perform intercepted_('#{schema}.#{fn}'); return; end; $$ language plpgs
 -- | We use this to generate the each cluster of a transition test, which includes several lines.
 genTransitionTest :: Chart StateName EventName -> Text -> IndividualTest -> Text
 genTransitionTest chart chartname IndividualTest{..} =
-    T.unlines . RIO.filter (not . T.null) . catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""]
+    T.unlines . RIO.filter (not . T.null) . catMaybes $ [Just starter, setter, Just notifier, Just statechecker] <> actioncheckers <> [Just ""] -- TODO: remove empty string
   where
     starter :: Text
     starter =
@@ -134,15 +134,11 @@ genTransitionTest chart chartname IndividualTest{..} =
          in [i|select id as mid from fsm.start_machine_with_latest_statechart(1,'#{sanitized}') \\gset|]
     setter :: Maybe Text
     setter =
-        let ss = lookupState chart (StateName source_)
-         in case ss of
-                Nothing -> Nothing
-                Just s ->
-                    if isInitial chart s
-                        then Nothing -- error . show $ (source_,initial')
-                        else
-                            let (StateName l) = initial chart
-                             in Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{l}'; |]
+        let initStateName = toText . sid $ getInitialState chart
+        in if source_ == initStateName
+           then Nothing
+           else Just [iii| update fsm.state_machine_state SET state_id = '#{source_}' where state_machine_id = :mid and shard_id = 1 and state_id = '#{initStateName}'; |]
+
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text

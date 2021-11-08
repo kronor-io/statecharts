@@ -1,9 +1,9 @@
 module Statechart.Helpers where
 
 import RIO
-import RIO.List (nub,sort)
+import RIO.List (nub,sort,find)
+import Statechart.SCXML
 import Statechart.Types
-import Statechart.Types (Chart(initial), State (subStates))
 
 -- TODO organize and delete the functions that are not been used anymore.
 
@@ -47,7 +47,7 @@ lookupState ch st =
   foldr go Nothing (getAllChartStates ch)
  where
   go _ (Just x) = Just x
-  go a acc = if sid a == st then Just a else acc
+  go a Nothing = if sid a == st then Just a else Nothing
 
 getAllChartStates :: Chart s e -> [State s e]
 getAllChartStates Chart{..} = states ++ concatMap getAllSubStates states
@@ -58,7 +58,6 @@ getAllChartTransitions Chart{..} = concatMap getAllTransitions states
 isFinal :: State s e -> Bool
 isFinal = \case Final{} -> True; _ -> False
 
--- TODO i think this is wrong...
 isInitial :: Eq s => Chart s e -> State s e -> Bool
 isInitial chart state = initial chart == id_ || any aux (states chart)
   where
@@ -68,14 +67,16 @@ isInitial chart state = initial chart == id_ || any aux (states chart)
     aux MultiState{..} = msInitial == id_ || any aux subStates
     aux Parallel{..} = any aux regions
 
-getInitialState :: Chart StateName EventName -> State StateName EventName
-getInitialState chart =
-  let ccc = initial chart
-      fff = fromMaybe undefined $ lookupState chart ccc
-      sub = filter (isInitial chart) $ getAllSubStates fff
-   in undefined  -- TODO
-                -- we need to keep going down umtil a state with  no subStates and that is also initial
-                -- this seems to be the only way to get the true initial state
+getInitialState :: forall e. (Show e) => Chart StateName e -> State StateName e
+getInitialState chart@Chart{..} =
+  let top_initial = fromMaybe undefined (lookupState chart initial)
+   in f top_initial
+ where
+   f =
+     \case
+        s@MultiState {..} ->
+          f $ fromMaybe s (find (isInitial chart) subStates)
+        s -> s
 
 -- | Returns all the parent states of a given state with the most inmediate parent
 -- as the first element all the wayt to the root.

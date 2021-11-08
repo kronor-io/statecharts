@@ -42,7 +42,7 @@ getInitial cursor = case childs of
         [] -> Left "Initial has no transition"
         [c2] -> fromText =<< getElemAttr "target" c2
         l -> Left $ "Initial must only contain one transition, found: " <> T.pack (show (length l))
-    _ -> Left $ "More than one inital element found in: " <> T.pack (show cursor)
+    _ -> Left $ "More than one initial element found in: " <> T.pack (show cursor)
   where
     childs = getChildsWithName ["initial"] cursor
     transitions c = getChildsWithName ["transition"] c
