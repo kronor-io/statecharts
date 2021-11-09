@@ -75,7 +75,9 @@ getInitialState chart@Chart{..} =
    f =
      \case
         s@MultiState {..} ->
-          f $ fromMaybe s (find (isInitial chart) subStates)
+          case find (isInitial chart) subStates of
+            Nothing -> fromMaybe undefined $ lookupState chart msInitial
+            Just sss -> f sss
         s -> s
 
 -- | Returns all the parent states of a given state with the most inmediate parent

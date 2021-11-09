@@ -142,15 +142,15 @@ genTransitionTest chart chartname IndividualTest{..} =
     notifier :: Text
     notifier = [iii|select fsm.notify_state_machine(1,:mid,'#{transition}');|]
     statechecker :: Text
-    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,'#{target_}')),true);|]
+    statechecker = [iii|select is((select fsm.is_state_active(1,:mid,'#{target_}')),true,'state checker');|]
     actioncheckers :: [Maybe Text]
     actioncheckers =
         go <$> on_entry
       where
-        go action = Just [iii|select is((select last_intercepted()),'#{action}');|]
+        go action = Just [iii|select is((select last_intercepted()),'#{action}','action checker');|]
 
 -- | This add static checks for the action functions. Mostly a courtesy.
 fnCheck :: Text -> Text
 fnCheck dat =
     let [schema, fn] = T.splitOn "." dat
-     in [iii|select is(function_exists('#{schema}','#{fn}'), true);|]
+     in [iii|select is(function_exists('#{schema}','#{fn}'), true,'function checker schema: #{schema} fn: #{fn}');|]
