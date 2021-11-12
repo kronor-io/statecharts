@@ -147,7 +147,13 @@ BEGIN;
 
             , updated_states as (
                 update fsm.state_machine_state
-                set exited_at = now()
+                /* using clock_timestamp() instead of now(). now() uses
+                 * transaction time which can cause problem when another process
+                 * adds fsm.state_machine_state rows during the transaction. This
+                 * can cause the exited_at time to be earlier than the entered
+                 * time causing a constraint errors
+                 */
+                set exited_at = clock_timestamp()
                 where shard_id = shard
                   and state_machine_id = machine_id
                   and state_id in (select a.id from all_states a)
