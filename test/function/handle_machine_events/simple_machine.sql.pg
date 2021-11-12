@@ -37,7 +37,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the initial event')
+  select isnt(exited_at, null, 'should have exited the initial event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'initial';
 
@@ -62,7 +62,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the search event')
+  select isnt(exited_at, null, 'should have exited the search event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'searching';
 
@@ -87,7 +87,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the displaying event')
+  select isnt(exited_at, null, 'should have exited the displaying event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'displaying';
 
@@ -112,7 +112,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the displaying event')
+  select isnt(exited_at, null, 'should have exited the displaying event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'zoomed_in';
 
@@ -138,7 +138,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the zoomed_in event')
+  select isnt(exited_at, null, 'should have exited the zoomed_in event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'zoomed_in';
 
@@ -181,7 +181,7 @@ BEGIN;
   from fsm.state_machine_event
   where shard_id = :shard and state_machine_id = :machine and handled_at is null;
 
-  select is(exited_at, now(), 'should have exited the displaying event')
+  select isnt(exited_at, null, 'should have exited the displaying event')
   from fsm.state_machine_state
   where shard_id = :shard and state_machine_id = :machine and state_id = 'displaying';
 
