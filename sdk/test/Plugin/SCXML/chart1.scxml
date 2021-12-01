@@ -9,13 +9,18 @@
     </initial>
     <state id="s2" name="s2n">
       <transition event="ev3" target="s3"/>
+      <onexit>
+        <script src="table1.action3" />
+        <script src="table1.action4" />
+      </onexit>
     </state>
     <state id="s3" name="s3n">
       <transition event="ev4" target="s4"/>
     </state>
     <final id="s4" name="s4n">
       <onentry>
-        <script src="table1.action" />
+        <script src="table1.action1" />
+        <script src="table1.action2" />
       </onentry>
     </final>
   </state>
@@ -30,8 +35,7 @@
       </onentry>
       <transition event="ev6" target="s8"/>
       <transition event="ev7" target="s9"/>
-      <transition event="ev8" target="s17"/>
-    </state>
+      <transition event="ev8" target="s17"/> </state>
     <state id="s7" name="s7n">
     </state>
     <state id="s8" name="s8n">
