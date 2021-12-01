@@ -12,6 +12,7 @@ BEGIN;
         error_state text;
         error_context text;
         error_detail text;
+        on_entry_ fsm_event_payload;
       begin
 
         select * into machine from fsm.state_machine where shard_id = shard and id = machine_id;
@@ -23,15 +24,15 @@ BEGIN;
             (shard_id, state_machine_id, statechart_id, state_id) values
             (shard, machine.id, machine.statechart_id, initial.id);
 
-          if initial.on_entry is not null
-          then
+          foreach on_entry_ in array initial.on_entry
+          loop
               -- This call will look like something like this
               -- select my_schema.my_function(
               --  (1, 199, '__initial__', '{...}', null, 233, 'on_entry')::fsm.event_payload
               -- )
               execute format('select %I.%I(%L::fsm_event_payload)',
-                  coalesce((initial.on_entry).schema_name, 'public')
-                , (initial.on_entry).function_name
+                  coalesce((on_entry_).schema_name, 'public')
+                , (on_entry_).function_name
                 , ( shard
                   , machine.id
                   , '__initial__'
@@ -41,7 +42,7 @@ BEGIN;
                   , 'on_entry'
                   )::fsm_event_payload
               );
-          end if;
+          end loop;
 
         end loop;
 

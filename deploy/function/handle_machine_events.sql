@@ -160,7 +160,7 @@ BEGIN;
                   and exited_at is null
               )
 
-            select * from all_states where on_exit is not null
+            select shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from all_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((a_source_state.on_exit).schema_name, 'public')
@@ -202,7 +202,7 @@ BEGIN;
                 from all_states a
               )
 
-            select * from all_states where on_entry is not null
+            select shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from all_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((a_target_state.on_entry).schema_name, 'public')
