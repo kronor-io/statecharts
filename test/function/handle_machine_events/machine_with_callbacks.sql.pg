@@ -1,5 +1,5 @@
 BEGIN;
-  select plan(27);
+  select plan(43);
 
   \set shard 7000000001
   \set chart 9000000001
@@ -34,15 +34,18 @@ BEGIN;
   \i test/fixtures/composite_machine.sql
 
   update fsm.state set
-      on_entry = ('pg_temp', 'log_callback_execution')
-    , on_exit = ('pg_temp', 'log_callback_execution')
+      on_entry = Array[
+                   ('pg_temp', 'log_callback_execution'),
+                   ('pg_temp', 'log_callback_execution')
+                 ]::fsm_callback_name[]
+    , on_exit = Array[('pg_temp', 'log_callback_execution')]::fsm_callback_name[]
   where statechart_id = :chart;
 
   select id as machine from fsm.create_machine(:shard, :chart) \gset
   select fsm.start_machine(:shard, :machine);
 
   select
-      is(count(*), 1::bigint, 'the on_entry should have been called')
+      is(count(*), 2::bigint, 'the on_entry should have been called, but not the on_exit')
   from callbacks_called
   where id = :machine and event = '__initial__';
 
@@ -65,8 +68,14 @@ BEGIN;
   select
     is(
       array_agg(to_state)
-    , array['binging','checking_bing','checking_google','googling','searching']
-    , 'only initial states should have fired the on_entry callback'
+    , array[
+        'binging','binging',
+        'checking_bing','checking_bing',
+        'checking_google','checking_google',
+        'googling','googling',
+        'searching','searching'
+      ]
+    , 'only initial states should have fired the on_entry callback (twice)'
     )
   from (
       select to_state

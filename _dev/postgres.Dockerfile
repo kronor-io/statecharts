@@ -7,6 +7,8 @@ RUN apt-get -qq update \
     libpq5 postgresql-client-13 \
     # required by pgtap
     libtap-parser-sourcehandler-pgtap-perl postgresql-13-pgtap \
+    # required by plpgsql_check
+    libicu-dev \
     # required by pgxn
     pgxnclient build-essential postgresql-server-dev-13 \
     sqitch \
@@ -14,7 +16,8 @@ RUN apt-get -qq update \
     && apt-get clean \
     && rm -rf /var/cache/apt/* /var/lib/apt/lists/*
 
-RUN pgxn install semver
+RUN pgxn install semver \
+ && pgxn install plpgsql_check
 
 COPY _dev/init-extensions.sh /docker-entrypoint-initdb.d/init-extensions.sh
 

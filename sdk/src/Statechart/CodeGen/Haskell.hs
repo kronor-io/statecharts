@@ -132,13 +132,8 @@ genTransitionExp flowName parentStateName Transition{..} =
         ]
 
 genContentExp :: AsText e => FlowName -> Content e -> Exp
-genContentExp _ (Script src) = applyExpression [nameE "Just", applyExpression [nameE "Script", LitE . StringL $ T.unpack src]]
-genContentExp flowName (Raise event) = applyExpression [nameE "Just", applyExpression [nameE "Raise", ConE $ eventTypeName flowName (toText event)]]
-
-orNothing :: Maybe Exp -> Exp
-orNothing = \case
-    Nothing -> nameE "Nothing"
-    Just e -> e
+genContentExp _ (Script src) = applyExpression [nameE "Script", LitE . StringL $ T.unpack src]
+genContentExp flowName (Raise event) = applyExpression [nameE "Raise", ConE $ eventTypeName flowName (toText event)]
 
 genStateDec :: (AsText e, AsText s) => FlowName -> State s e -> Dec
 genStateDec flowName state =
@@ -150,8 +145,8 @@ genStateDec flowName state =
     dataNameText = flowName <> "_states"
     stateTypeName_ = mkName . (pascal (T.unpack dataNameText) <>) . pascal $ T.unpack $ toText $ sid state
     decName = stateValueName $ toText $ sid state
-    onentryExp = orNothing $ genContentExp flowName <$> onEntry state
-    onexitExp = orNothing $ genContentExp flowName <$> onExit state
+    onentryExp = ListE . fmap (genContentExp flowName) . onEntry $ state
+    onexitExp = ListE . fmap (genContentExp flowName) . onExit $ state
     bodyExp :: (AsText s, AsText e) => State s e -> Exp
     bodyExp Final{..} =
         applyExpression
