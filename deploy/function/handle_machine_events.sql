@@ -23,8 +23,8 @@ BEGIN;
     declare
       handled fsm.state_machine_event%rowtype;
       state_transition record;
-      a_source_state record;
-      a_target_state record;
+      on_exit_function_call record;
+      on_entry_function_call record;
       error_message text;
       error_state text;
       error_context text;
@@ -133,7 +133,7 @@ BEGIN;
           -- For all the active source states, we mark them as exited and execute their respective
           -- on_exit callback if any
           -- {{{source-exiting
-          for a_source_state in
+          for on_exit_function_call in
             with
 
               all_states as (
@@ -163,13 +163,13 @@ BEGIN;
             select shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from all_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
-                coalesce((a_source_state.on_exit).schema_name, 'public')
-              , (a_source_state.on_exit).function_name
+                coalesce((on_exit_function_call.on_exit).schema_name, 'public')
+              , (on_exit_function_call.on_exit).function_name
               , ( shard
                 , machine_id
                 , handled.name
                 , handled.data
-                , a_source_state.id
+                , on_exit_function_call.id
                 , state_transition.target_state->>'id'
                 , 'on_exit'
                 )::fsm_event_payload
@@ -180,7 +180,7 @@ BEGIN;
           -- now we do the same for the target states, but in reverse order. We enter states from the
           -- outermost to the innermost and execute their on_exit callback if any.
           -- {{{target-entering
-          for a_target_state in
+          for on_entry_function_call in
             with
 
               all_states as (
@@ -205,14 +205,14 @@ BEGIN;
             select shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from all_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
-                coalesce((a_target_state.on_entry).schema_name, 'public')
-              , (a_target_state.on_entry).function_name
+                coalesce((on_entry_function_call.on_entry).schema_name, 'public')
+              , (on_entry_function_call.on_entry).function_name
               , ( shard
                 , machine_id
                 , handled.name
                 , handled.data
                 , state_transition.source_state->>'id'
-                , a_target_state.id
+                , on_entry_function_call.id
                 , 'on_entry'
                 )::fsm_event_payload);
           end loop;
