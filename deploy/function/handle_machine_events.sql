@@ -23,8 +23,8 @@ BEGIN;
     declare
       handled fsm.state_machine_event%rowtype;
       state_transition record;
-      a_source_state fsm.state%rowtype;
-      a_target_state fsm.state%rowtype;
+      a_source_state record;
+      a_target_state record;
       error_message text;
       error_state text;
       error_context text;

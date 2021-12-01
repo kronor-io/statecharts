@@ -12,7 +12,7 @@ BEGIN;
         error_state text;
         error_context text;
         error_detail text;
-        on_entry_ fsm_event_payload;
+        on_entry_ fsm_callback_name;
       begin
 
         select * into machine from fsm.state_machine where shard_id = shard and id = machine_id;
@@ -31,7 +31,7 @@ BEGIN;
               --  (1, 199, '__initial__', '{...}', null, 233, 'on_entry')::fsm.event_payload
               -- )
               execute format('select %I.%I(%L::fsm_event_payload)',
-                  coalesce((on_entry_).schema_name, 'public')
+                  coalesce((on_entry_).schema_name::text, 'public')
                 , (on_entry_).function_name
                 , ( shard
                   , machine.id

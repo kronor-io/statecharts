@@ -34,8 +34,8 @@ BEGIN;
   \i test/fixtures/composite_machine.sql
 
   update fsm.state set
-      on_entry = ('pg_temp', 'log_callback_execution')
-    , on_exit = ('pg_temp', 'log_callback_execution')
+      on_entry = Array[('pg_temp', 'log_callback_execution')]::fsm_callback_name[]
+    , on_exit = Array[('pg_temp', 'log_callback_execution')]::fsm_callback_name[]
   where statechart_id = :chart;
 
   select id as machine from fsm.create_machine(:shard, :chart) \gset

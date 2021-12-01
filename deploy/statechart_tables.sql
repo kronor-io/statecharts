@@ -33,8 +33,8 @@ CREATE TABLE fsm.state (
   parent_path ltree NOT NULL,
   node_path ltree NOT NULL,
   parent_id text,
-  on_entry fsm_callback_name[] NOT NULL,
-  on_exit fsm_callback_name[] NOT NULL,
+  on_entry fsm_callback_name[] NOT NULL DEFAULT ARRAY[]::fsm_callback_name[],
+  on_exit fsm_callback_name[] NOT NULL DEFAULT ARRAY[]::fsm_callback_name[],
   PRIMARY KEY (statechart_id, id),
 
   CONSTRAINT id_must_be_within_bounds
