@@ -91,7 +91,6 @@ getContent cursor = mapM toContent childs
 data TriggerType = OnEntry | OnExit
                  deriving (Eq)
 
--- TODO: replace getChildsWithName with function that doesn't take list
 getContentOfTriggerType :: TriggerType -> Cursor -> Either Text [Content EventName]
 getContentOfTriggerType tt = fmap join . traverse getContent . getChildsWithName [triggerName tt]
     where
