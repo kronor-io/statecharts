@@ -81,8 +81,8 @@ stateItemDef c s =
         , {-parent_id-} maybe nul (str . toText . sid) (head_ (getParents c s))
         , {-is_initial-} bul (isInitial c s)
         , {-is_final-} bul (isFinal s)
-        , {-on_entry-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onEntry $ s) <> "]"
-        , {-on_exit-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onExit $ s) <> "]"
+        , {-on_entry-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onEntry $ s) <> "]::fsm_callback_name[]"
+        , {-on_exit-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onExit $ s) <> "]::fsm_callback_name[]"
         ]
 
 cToText :: AsText e => Content e -> Text
