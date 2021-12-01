@@ -88,25 +88,15 @@ getContent cursor = mapM toContent childs
       where
         contentType = getNodeName c
 
-getEntryAndExit :: Cursor -> (Either Text (Content EventName), Either Text (Content EventName))
-getEntryAndExit cursor = (cursorContents onentry, cursorContents onexit)
-  where
-    onentry = do
-        let nn = fmap getNodeName <$> zip childs childs
-        case filter ((== Right "onentry") . snd) nn of
-            [x] -> Right (fst x)
-            _xs -> Left "More than one entry action"
-    onexit = do
-        let nn = fmap getNodeName <$> zip childs childs
-        case filter ((== Right "onexit") . snd) nn of
-            [x] -> Right (fst x)
-            _xs -> Left "More than one exit action"
-    childs = getChildsWithName ["onentry", "onexit"] cursor
-    cursorContents (Left e) = Left e
-    cursorContents (Right c) = case getContent c of
-        Left e -> Left e
-        Right [x] -> Right x
-        _ -> Left "Too many contents"
+data TriggerType = OnEntry | OnExit
+                 deriving (Eq)
+
+-- TODO: replace getChildsWithName with function that doesn't take list
+getContentOfTriggerType :: TriggerType -> Cursor -> Either Text [Content EventName]
+getContentOfTriggerType tt = fmap join . traverse getContent . getChildsWithName [triggerName tt]
+    where
+        triggerName OnEntry = "onentry"
+        triggerName OnExit = "onexit"
 
 getTransitions :: StateName -> Cursor -> Either Text [Transition StateName EventName]
 getTransitions src cursor = mapM toTransition childs
@@ -130,12 +120,8 @@ getSubStates cursor = mapM toState childs
                     Final
                         { sid = sid
                         , description = fromRight "" name_
-                        , onEntry = case entry_ of
-                            Left _e -> Nothing
-                            Right r -> Just r
-                        , onExit = case exit_ of
-                            Left _e -> Nothing
-                            Right r -> Just r
+                        , onEntry = entry_
+                        , onExit = exit_
                         }
             Right "parallel" -> do
                 ts <- transitions_ sid
@@ -145,12 +131,8 @@ getSubStates cursor = mapM toState childs
                         , regions = subStates_
                         , transitions = ts
                         , description = fromRight "" name_
-                        , onEntry = case entry_ of
-                            Left _e -> Nothing
-                            Right r -> Just r
-                        , onExit = case exit_ of
-                            Left _e -> Nothing
-                            Right r -> Just r
+                        , onEntry = entry_
+                        , onExit = exit_
                         }
             Right "state" -> do
                 ts <- transitions_ sid
@@ -161,12 +143,8 @@ getSubStates cursor = mapM toState childs
                                 { sid = sid
                                 , transitions = ts
                                 , description = fromRight "" name_
-                                , onEntry = case entry_ of
-                                    Left _e -> Nothing
-                                    Right r -> Just r
-                                , onExit = case exit_ of
-                                    Left _e -> Nothing
-                                    Right r -> Just r
+                                , onEntry = entry_
+                                , onExit = exit_
                                 }
                     else do
                         initial_ <- getInitial c
@@ -177,16 +155,13 @@ getSubStates cursor = mapM toState childs
                                 , subStates = subStates_
                                 , transitions = ts
                                 , description = fromRight "" name_
-                                , onEntry = case entry_ of
-                                    Left _e -> Nothing
-                                    Right r -> Just r
-                                , onExit = case exit_ of
-                                    Left _e -> Nothing
-                                    Right r -> Just r
+                                , onEntry = entry_
+                                , onExit = exit_
                                 }
             _ -> Left "This also should not happen, at getSubStates."
       where
-        (entry_, exit_) = getEntryAndExit c
+        entry_ = fromRight [] $ getContentOfTriggerType OnEntry c
+        exit_ = fromRight [] $ getContentOfTriggerType OnExit c
         name_ = maybeGetElemAttr "name" c
         transitions_ src = getTransitions src c
         stateType_ = getNodeName c

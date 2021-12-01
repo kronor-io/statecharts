@@ -10,6 +10,7 @@ import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
 import System.FilePath.Posix (dropExtension)
+import Data.List qualified as List
 
 writeSQLs :: FilePath -> [(FilePath, Text)] -> IO ()
 writeSQLs targetPath xs =
@@ -80,10 +81,8 @@ stateItemDef c s =
         , {-parent_id-} maybe nul (str . toText . sid) (head_ (getParents c s))
         , {-is_initial-} bul (isInitial c s)
         , {-is_final-} bul (isFinal s)
-        , {-on_entry-} case cToText <$> onEntry s of
-            Nothing -> "null"
-            Just x -> if T.null x then "nully" else x
-        , {-on_exit-} "null" -- TODO not implemented
+        , {-on_entry-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onEntry $ s) <> "]"
+        , {-on_exit-} "Array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onExit $ s) <> "]"
         ]
 
 cToText :: AsText e => Content e -> Text

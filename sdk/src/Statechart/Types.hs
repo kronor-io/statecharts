@@ -77,8 +77,8 @@ data State s e
         { sid :: s
         , transitions :: [Transition s e]
         , description :: Text
-        , onEntry :: Maybe (Content e)
-        , onExit :: Maybe (Content e)
+        , onEntry :: [Content e]
+        , onExit :: [Content e]
         }
     | MultiState
         { sid :: s
@@ -86,22 +86,22 @@ data State s e
         , subStates :: [State s e]
         , transitions :: [Transition s e]
         , description :: Text
-        , onEntry :: Maybe (Content e)
-        , onExit :: Maybe (Content e)
+        , onEntry :: [Content e]
+        , onExit :: [Content e]
         }
     | Final
         { sid :: s
         , description :: Text
-        , onEntry :: Maybe (Content e)
-        , onExit :: Maybe (Content e)
+        , onEntry :: [Content e]
+        , onExit :: [Content e]
         } -- not a list
     | Parallel
         { sid :: s
         , regions :: [State s e] -- regions should only contain MultiState or Parallel
         , transitions :: [Transition s e]
         , description :: Text
-        , onEntry :: Maybe (Content e)
-        , onExit :: Maybe (Content e)
+        , onEntry :: [Content e]
+        , onExit :: [Content e]
         }
     deriving (Show, Eq, Generic, ToJSON, FromJSON)
 

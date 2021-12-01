@@ -33,8 +33,8 @@ CREATE TABLE fsm.state (
   parent_path ltree NOT NULL,
   node_path ltree NOT NULL,
   parent_id text,
-  on_entry fsm_callback_name,
-  on_exit fsm_callback_name,
+  on_entry fsm_callback_name[] NOT NULL,
+  on_exit fsm_callback_name[] NOT NULL,
   PRIMARY KEY (statechart_id, id),
 
   CONSTRAINT id_must_be_within_bounds
@@ -125,11 +125,11 @@ comment on column fsm.state.parent_id is $comment$
 $comment$;
 
 comment on column fsm.state.on_entry is $comment$
-    The function to execute when this state is entered.
+    The functions to execute when this state is entered.
 $comment$;
 
 comment on column fsm.state.on_exit is $comment$
-    The function to execute when the state is exited.
+    The functions to execute when the state is exited.
 $comment$;
 
 CREATE TABLE fsm.transition (
