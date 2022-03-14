@@ -16,7 +16,7 @@ BEGIN;
       ON DELETE CASCADE
   );
 
-  CREATE INDEX idx_statechart ON fsm.state_machine(statechart_id);
+  create index idx_state_machine_statechart_id ON fsm.state_machine(statechart_id);
 
   comment on table fsm.state_machine is
       'Runtime information of a statechart. Contains state machine instances that have started.';
@@ -43,7 +43,7 @@ BEGIN;
       ON DELETE CASCADE
   );
 
-  CREATE UNIQUE INDEX idx_state ON fsm.state_machine_state(shard_id, state_machine_id, state_id)
+  CREATE UNIQUE INDEX idx_state_machine_state_unique ON fsm.state_machine_state(shard_id, state_machine_id, state_id)
     WHERE exited_at IS NULL;
 
   comment on table fsm.state_machine_state is $comment$
@@ -83,7 +83,7 @@ BEGIN;
       ON DELETE CASCADE
   );
 
-  CREATE INDEX idx_state_machine ON fsm.state_machine_event(shard_id, state_machine_id)
+  CREATE INDEX idx_state_machine_event_handled_at_null ON fsm.state_machine_event(shard_id, state_machine_id)
     WHERE handled_at IS NULL;
 
   comment on table fsm.state_machine_event is

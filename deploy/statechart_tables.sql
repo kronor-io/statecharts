@@ -12,7 +12,7 @@ CREATE TABLE fsm.statechart (
     CHECK (char_length(name) >= 1 and char_length(name) <= 200)
 );
 
-CREATE UNIQUE INDEX idx_unique_name_version ON fsm.statechart(name, version);
+CREATE UNIQUE INDEX idx_statechart_unique_name_version ON fsm.statechart(name, version);
 
 comment on table fsm.statechart is 'All the different statecharts and their versions.';
 
@@ -57,9 +57,9 @@ CREATE TABLE fsm.state (
     ON DELETE CASCADE
 );
 
-CREATE INDEX idx_parent ON fsm.state(statechart_id, parent_id);
-CREATE INDEX idx_parent_path ON fsm.state USING GIST (parent_path) INCLUDE (statechart_id);
-CREATE INDEX idx_node_path ON fsm.state USING GIST (node_path) INCLUDE (statechart_id);
+CREATE INDEX idx_state_parent ON fsm.state(statechart_id, parent_id);
+CREATE INDEX idx_state_parent_path ON fsm.state USING GIST (parent_path) INCLUDE (statechart_id);
+CREATE INDEX idx_state_node_path ON fsm.state USING GIST (node_path) INCLUDE (statechart_id);
 
 -- https://statecharts.dev/glossary/state.html
 comment on table fsm.state is $comment$
