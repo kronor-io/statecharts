@@ -7,15 +7,35 @@ import RIO.ByteString qualified as BS
 import RIO.ByteString.Lazy qualified as LBS
 import RIO.Text qualified as T
 import Statechart.Types
-import System.Directory (listDirectory)
+import System.Directory (listDirectory, doesDirectoryExist)
 import System.FilePath.Posix (takeExtension)
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
+import Prelude qualified
+
+ddeS src c = doesDirectoryExist (src <> c)
+
+-- XXX will consume lot of memory if used on large directories
+listDirectoryRecursive :: FilePath -> IO [FilePath]
+listDirectoryRecursive src = go src
+    where
+        go d = do
+            contents <- listDirectory d
+            innerDirs <- filterM (ddeS src) contents
+            res <- go1 innerDirs
+            pure $ contents ++ res
+
+        go1 [] = pure []
+        go1 (d:ds) = do
+            contents <- (\cs -> (\c -> d <> "/" <> c) <$> cs) <$> listDirectory (src <> d)
+            innerDirs <- filterM (ddeS (src <> "/")) contents
+            res <- go1 (innerDirs++ds)
+            pure $ contents ++ res
 
 readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
 readSCXMLfiles sourcePath = do
-    xs_ <- filter scxmlFile <$> listDirectory sourcePath
+    xs_ <- filter scxmlFile <$> listDirectoryRecursive sourcePath
     forM (zip xs_ xs_) $ \(path, _) -> do
         a <- BS.readFile (sourcePath <> path)
         case parse $ LBS.fromStrict a of
@@ -30,10 +50,11 @@ parse = parseRoot . fromDocument . parseLBS_ def
 
 parseRoot :: Cursor -> Either Text (Chart StateName EventName)
 parseRoot cursor = do
+    n <- fromText =<< getElemAttr "name" cursor
     v <- fromText =<< getElemAttr "version" cursor
     i <- fromText =<< getElemAttr "initial" cursor
     s <- getSubStates cursor
-    return $ Chart v i s
+    return $ Chart n v i s
 
 getInitial :: Cursor -> Either Text StateName
 getInitial cursor = case childs of

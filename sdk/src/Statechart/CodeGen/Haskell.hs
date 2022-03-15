@@ -11,23 +11,49 @@ import Statechart.Helpers
 import Statechart.SCXML qualified as SCXML
 import Statechart.Types as Types
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath.Posix (dropExtension)
+import System.FilePath.Posix (takeExtension, dropExtension)
 import Text.Casing
+import Data.Char (toUpper)
+
+import Prelude qualified
+createDirectoryRecursive :: FilePath -> FilePath -> IO ()
+createDirectoryRecursive src fp = do
+    let dir = takeWhile (/= '/') fp
+    if dir == "" || takeExtension dir /= ""
+    then return ()
+    else do
+        Prelude.print [src,dir,fp]
+        createDirectoryIfMissing True (src <> dir)
+        createDirectoryRecursive (src <> dir <> "/") (drop 1 (dropWhile (/= '/') fp))
 
 writeHaskells :: FilePath -> [(FilePath, Text)] -> IO ()
 writeHaskells targetPath xs = do
     createDirectoryIfMissing True targetPath
     forM_ xs $ \(path, body) -> do
         let finalPath = targetPath <> dropExtension path <> ".hs"
+        createDirectoryRecursive targetPath path
         BS.writeFile finalPath (T.encodeUtf8 body)
+
+dotToDash :: String -> String
+dotToDash [] = []
+dotToDash ('.':c:xs) = '/':toUpper c: dotToDash xs
+dotToDash (x:xs) = x:dotToDash xs
+
+capsAfterDot :: String -> String
+capsAfterDot [] = []
+capsAfterDot ('.':c:xs) = '.':toUpper c : capsAfterDot xs
+capsAfterDot (x:xs) = x : capsAfterDot xs
 
 -- | This function needs to be in IO so we run the Q monad with the templates.
 generateHaskell :: [(FilePath, ByteString, Chart StateName EventName)] -> IO [(FilePath, Text)]
 generateHaskell =
-    mapM $ \(x, __bs, a) -> do
-        code <- runQ $ genCodeFromChart (T.takeWhile (/= '.') (T.pack x)) a
-        let header = T.pack $ "module " <> pascal (T.unpack $ T.takeWhile (/= '.') (T.pack x)) <> " where\n\nimport RIO\nimport Types\n\n-- FILE AUTOMATICALLY\n-- GENERATED. DO NOT CHANGE IT\n-- MANUALLY. CHANGES MIGHT BE OVERWRITTEN.\n\n"
-        return (pascal x, header <> T.pack (pprint code))
+    mapM $ \(_, __bs, a) -> do
+        let mn = pascal (capsAfterDot (T.unpack $ name a))
+            fn = (dotToDash mn) <> ".hs"
+            flowName = filter (/= '.') mn
+        code <- runQ $ genCodeFromChart (T.pack flowName) a
+        let header = T.pack $ "module " <> mn <> " where\n\nimport RIO\nimport Types\n\n-- FILE AUTOMATICALLY\n-- GENERATED. DO NOT CHANGE IT\n-- MANUALLY. CHANGES MIGHT BE OVERWRITTEN.\n\n"
+        return (fn, header <> T.pack (pprint code))
 
 genCodeFromChart :: Text -> Chart StateName EventName -> Q [Dec]
 genCodeFromChart flowName doc = do

@@ -61,7 +61,8 @@ instance AsText Text where
 
 -- | This is our canonical Chart representation.
 data Chart s e = Chart
-    { version :: Version
+    { name :: Text
+    , version :: Version
     , initial :: s
     , states :: [State s e]
     }
