@@ -15,14 +15,12 @@ import System.FilePath.Posix (takeExtension, dropExtension)
 import Text.Casing
 import Data.Char (toUpper)
 
-import Prelude qualified
 createDirectoryRecursive :: FilePath -> FilePath -> IO ()
 createDirectoryRecursive src fp = do
     let dir = takeWhile (/= '/') fp
     if dir == "" || takeExtension dir /= ""
     then return ()
     else do
-        Prelude.print [src,dir,fp]
         createDirectoryIfMissing True (src <> dir)
         createDirectoryRecursive (src <> dir <> "/") (drop 1 (dropWhile (/= '/') fp))
 
