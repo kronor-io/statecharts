@@ -20,7 +20,7 @@ writeSQLs targetPath xs =
 generateSQL :: [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text)]
 generateSQL =
     fmap $ \(x, _bs, a) ->
-        let code = gen (GenConfig (T.pack (dropExtension x)) (version a)) a
+        let code = gen (GenConfig (T.pack (dropExtension x)) (name a) (version a)) a
          in (x, code)
 
 -------------
@@ -29,14 +29,15 @@ generateSQL =
 
 -- | Configuration for the generation.
 data GenConfig = GenConfig
-    { cfgName :: Text
+    { cfgFile :: Text
+    , cfgName :: Text
     , cfgVersion :: Version
     }
 
 -- | So we can generate SQL from any chart.
 gen :: (AsText e, AsText s, Eq s) => GenConfig -> Chart s e -> Text
 gen GenConfig{..} chart =
-    let h = header cfgName
+    let h = header cfgFile
         s :: Text = stateArea chart
         t :: Text = transitionArea chart
         b = fnBody GenConfig{..} [iii|#{s}\n#{t}|]
