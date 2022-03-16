@@ -1,4 +1,5 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
+              name="chart2"
               version="1.0"
               initial="s1">
     <state id="s1" name="s1n">

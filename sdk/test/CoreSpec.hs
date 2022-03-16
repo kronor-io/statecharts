@@ -24,7 +24,7 @@ runSpec name chart = do
         it "returns what we expect" (gensSql name chart expectedSql)
 
 gensSql :: (Eq s, AsText e, AsText s) => Text -> Chart s e -> Text -> Expectation
-gensSql name chart result = SQL.gen (SQL.GenConfig name "0.1") chart `shouldBe` result
+gensSql name chart result = SQL.gen (SQL.GenConfig name name "0.1") chart `shouldBe` result
 
 gensSqlNot :: (Eq s, AsText e, AsText s) => Text -> Chart s e -> Text -> Expectation
-gensSqlNot name chart result = SQL.gen (SQL.GenConfig name "0.1") chart `shouldNotBe` result
+gensSqlNot name chart result = SQL.gen (SQL.GenConfig name name "0.1") chart `shouldNotBe` result
