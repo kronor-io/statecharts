@@ -2,6 +2,7 @@
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
 module Statechart.CodeGen.SQL (writeSQLs, generateSQL, GenConfig (..), gen) where
 
+import Data.List qualified as List
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
 import RIO
@@ -10,7 +11,6 @@ import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
 import System.FilePath.Posix (dropExtension)
-import Data.List qualified as List
 
 writeSQLs :: FilePath -> [(FilePath, Text)] -> IO ()
 writeSQLs targetPath xs =
