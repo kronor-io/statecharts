@@ -4,7 +4,7 @@ BEGIN;
 
 
  set client_min_messages TO warning;
-  drop type if exists fsm_event_payload restrict;
+  drop type if exists fsm_event_payload cascade;
  reset client_min_messages;
 
   create type fsm_event_payload as
@@ -107,7 +107,7 @@ BEGIN;
                 and current_children_state.state_id = state_child.id
                 and current_children_state.exited_at is null
               where state_child.statechart_id = current_state.statechart_id
-                and state_child.parent_path <@ (source.parent_path || source.id)
+                and state_child.parent_path <@ source.node_path
             ) st
           ) source_tree on true
 
@@ -118,8 +118,21 @@ BEGIN;
              ( select state_child.*
                from fsm.state state_child
                where state_child.statechart_id = current_state.statechart_id
-                 and state_child.parent_path <@ (target.parent_path || target.id)
+                 and state_child.parent_path <@ target.node_path
                  and state_child.is_initial
+                 -- We have selected so far all initial children recursively, but we have
+                 -- now to filter out those who have parents that are not initial as well
+                 -- Any node in the chain that is not active should break the chain of nodes
+                 -- that we are activating recursively.
+                 and not exists (
+                     select *
+                     from fsm.state bad_parent
+                     where bad_parent.statechart_id = current_state.statechart_id
+                        and target.node_path @> bad_parent.node_path
+                        and bad_parent.node_path @> state_child.parent_path
+                        and bad_parent.id <> target.id
+                        and not bad_parent.is_initial
+                 )
             ) tt
           ) target_tree on true
 
