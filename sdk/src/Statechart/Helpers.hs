@@ -54,10 +54,11 @@ isInitial :: Eq s => Chart s e -> State s e -> Bool
 isInitial chart state = initial chart == id_ || any aux (states chart)
   where
     id_ = sid state
+
     aux Final{} = False
     aux NormalState{} = False
     aux MultiState{..} = msInitial == id_ || any aux subStates
-    aux Parallel{..} = any aux regions
+    aux Parallel{regions} = any (\st -> sid st == id_) regions || any aux regions
 
 -- | Returns all the parent states of a given state with the most inmediate parent
 -- as the first element all the wayt to the root.
