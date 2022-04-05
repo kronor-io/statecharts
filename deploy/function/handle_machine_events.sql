@@ -62,10 +62,10 @@ BEGIN;
 
           -- {{{transition-query
           select
-              to_jsonb(source) as source_state
-            , to_jsonb(target) as target_state
-            , coalesce(source_tree.states, '[]'::jsonb) as children_source_states
-            , coalesce(target_tree.states, '[]'::jsonb) as children_target_states
+              source as source_state
+            , target as target_state
+            , coalesce(source_tree.states, array[]::fsm.state[]) as children_source_states
+            , coalesce(target_tree.states, array[]::fsm.state[]) as children_target_states
             , target.is_final as target_is_final
 
           -- we need to lookup the states the machine is at. Since this will
@@ -95,7 +95,7 @@ BEGIN;
           -- we need to get the entire sub-tree for the source state we are transitioning
           -- from, so that we can call all of the on_exit callbacks.
           join lateral (
-            select jsonb_agg(st) as states from
+            select array_agg(st::fsm.state)::fsm.state[] as states from
             ( select state_child.*
               from fsm.state state_child
               -- we only want child states that are currently activated in the state machine
@@ -114,7 +114,7 @@ BEGIN;
           -- Similarly, we also need the tree for the target state, as we need to
           -- activate all the `is_initial` states and execute their `on_entry` callbacks
           join lateral (
-            select jsonb_agg(tt) as states from
+            select array_agg(tt::fsm.state)::fsm.state[] as states from
              ( select state_child.*
                from fsm.state state_child
                where state_child.statechart_id = current_state.statechart_id
@@ -152,10 +152,7 @@ BEGIN;
               all_states as (
                 select *
                 from
-                  jsonb_populate_recordset(
-                    null::fsm.state
-                  , state_transition.children_source_states || state_transition.source_state
-                  )
+                  unnest(state_transition.children_source_states || state_transition.source_state)
               )
 
             , updated_states as (
@@ -183,7 +180,7 @@ BEGIN;
                 , handled.name
                 , handled.data
                 , on_exit_function_call.id
-                , state_transition.target_state->>'id'
+                , (state_transition.target_state).id
                 , 'on_exit'
                 )::fsm_event_payload
               );
@@ -199,10 +196,7 @@ BEGIN;
               all_states as (
                 select *
                 from
-                  jsonb_populate_recordset(
-                    null::fsm.state
-                  , state_transition.target_state || state_transition.children_target_states
-                  )
+                  unnest(state_transition.target_state || state_transition.children_target_states)
               )
 
             , new_states as (
@@ -224,7 +218,7 @@ BEGIN;
                 , machine_id
                 , handled.name
                 , handled.data
-                , state_transition.source_state->>'id'
+                , (state_transition.source_state).id
                 , on_entry_function_call.id
                 , 'on_entry'
                 )::fsm_event_payload);
@@ -239,7 +233,7 @@ BEGIN;
             insert into fsm.state_machine_event (shard_id, state_machine_id, name, data) values
               ( shard
               , machine_id
-              , format('done.state.%s', state_transition.target_state->>'id')
+              , format('done.state.%s', (state_transition.target_state).id)
               , '{}'
               );
 
@@ -250,7 +244,7 @@ BEGIN;
               from fsm.get_finalized_parents(
                   shard
                 , machine_id
-                , (state_transition.target_state->>'parent_path')::ltree
+                , (state_transition.target_state).parent_path
               ) f;
           end if;
           -- event-generation}}}

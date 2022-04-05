@@ -2,6 +2,7 @@
   commands:
     - docker compose exec postgres pg_prove \0
 
-- pattern: deploy/.*\.sql
+- pattern: deploy/(.*)\.sql
   commands:
-    - docker compose exec postgres sqitch rebase -y
+    - docker compose exec postgres sqitch deploy
+    - docker compose exec postgres sqitch rebase -y --onto \1^
