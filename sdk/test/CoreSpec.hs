@@ -12,19 +12,16 @@ import System.Directory
 
 spec :: Spec
 spec = do
-    runSpec "chart1" chart1
-    runSpec "chart2" chart2
-    runSpec "chart3" chart3
+    runSpec "chart1" "0.1" chart1
+    runSpec "chart2" "2.0" chart2
+    runSpec "chart3" "0.3" chart3
 
-runSpec :: (AsText a, AsText b, Eq a) => Text -> Chart a b -> Spec
-runSpec name chart = do
+runSpec :: (AsText a, AsText b, Eq a) => Text -> Version -> Chart a b -> Spec
+runSpec name semver chart = do
     expectedSql <- fromRight undefined . T.decodeUtf8' <$> runIO (BS.readFile $ "test/Plugin/SQL/" <> T.unpack name <> ".sql")
     describe (T.unpack name <> " sql generation") $ do
-        it "does return something" (gensSqlNot name chart "")
-        it "returns what we expect" (gensSql name chart expectedSql)
+        it "returns what we expect" (gensSql name semver chart expectedSql)
 
-gensSql :: (Eq s, AsText e, AsText s) => Text -> Chart s e -> Text -> Expectation
-gensSql name chart result = SQL.gen (SQL.GenConfig name name "0.1") chart `shouldBe` result -- TODO change stuff like this semver here for testing
-
-gensSqlNot :: (Eq s, AsText e, AsText s) => Text -> Chart s e -> Text -> Expectation
-gensSqlNot name chart result = SQL.gen (SQL.GenConfig name name "0.1") chart `shouldNotBe` result -- TODO change stuff like this semver here for testing
+gensSql :: (Eq s, AsText e, AsText s) => Text -> Version -> Chart s e -> Text -> Expectation
+gensSql name semver chart result =
+  SQL.gen (SQL.GenConfig name name semver) chart `shouldBe` result

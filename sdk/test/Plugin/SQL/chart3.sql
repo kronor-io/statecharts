@@ -7,7 +7,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('chart3', 0.1::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('chart3', 0.3::semver) returning id into chart;
 insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
 (chart, 's1', 's1n', null, true, false, array[('table1', 'action5')]::fsm_callback_name[], array[]::fsm_callback_name[]),
 (chart, 's2', 's2n', null, false, false, array[('table1', 'action4')]::fsm_callback_name[], array[]::fsm_callback_name[]),
