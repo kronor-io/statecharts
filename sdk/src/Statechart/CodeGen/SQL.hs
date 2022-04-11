@@ -69,7 +69,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('#{cfgName}', #{cfgVersion}::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('#{cfgName}', #{toText cfgVersion}::semver) returning id into chart;
 #{body}
 end
 $$;

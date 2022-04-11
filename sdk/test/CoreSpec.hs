@@ -12,7 +12,7 @@ import System.Directory
 
 spec :: Spec
 spec = do
-    runSpec "chart1" "0.1" chart1
+    runSpec "chart1" "1.1" chart1
     runSpec "chart2" "2.0" chart2
     runSpec "chart3" "0.3" chart3
 
