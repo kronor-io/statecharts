@@ -24,7 +24,7 @@ instance AsText EventName where
 instance IsString EventName where
     fromString = unsafeEr . fromText . T.pack
 
-newtype Version = Version (Int, Int)
+newtype Version = Version (Int, Int) -- TODO int64
     deriving (Generic)
     deriving newtype (Eq)
 
@@ -41,7 +41,7 @@ instance IsString Version where
     fromString = unsafeEr . fromText . T.pack
 
 instance AsText Version where
-    fromText _t = return $ Version (0, 1)
+    fromText _t = return $ Version (0, 1) -- TODO why hardcoded?
     toText (Version (a, b)) = T.pack $ show a <> show b
 
 newtype ChartName = ChartName Text
@@ -66,10 +66,10 @@ data Chart s e = Chart
     , initial :: s
     , states :: [State s e]
     }
-    deriving (Show, Eq, Generic, ToJSON, FromJSON)
+    deriving (Show, Eq, Generic, ToJSON, FromJSON) -- TODO are we using json here?
 
 data Content e
-    = Script Text -- TODO ActionName
+    = Script Text -- TODO call it ActionName
     | Raise e
     deriving (Show, Eq, Generic, ToJSON, FromJSON, Functor)
 

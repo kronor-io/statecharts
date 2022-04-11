@@ -31,7 +31,7 @@ generateSQL =
 data GenConfig = GenConfig
     { cfgFile :: Text
     , cfgName :: Text
-    , cfgVersion :: Version
+    , cfgVersion :: Version -- TODO been discarded?
     }
 
 -- | So we can generate SQL from any chart.
@@ -59,6 +59,8 @@ transitionArea chart =
 
 header :: Text -> Text
 header name = [i|-- Deploy kronor:statechart/#{name} to pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
+
+-- TODO just notice we do not generate the revert and verify part of the migration
 
 fnBody :: GenConfig -> Text -> Text
 fnBody GenConfig{..} body =
