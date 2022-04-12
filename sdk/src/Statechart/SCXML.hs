@@ -14,8 +14,6 @@ import Text.XML qualified as XML
 import Text.XML.Cursor
 import Prelude qualified
 
-ddeS src c = doesDirectoryExist (src <> c)
-
 -- XXX will consume lot of memory if used on large directories
 listDirectoryRecursive :: FilePath -> IO [FilePath]
 listDirectoryRecursive src = go src
@@ -32,6 +30,7 @@ listDirectoryRecursive src = go src
             innerDirs <- filterM (ddeS (src <> "/")) contents
             res <- go1 (innerDirs++ds)
             pure $ contents ++ res
+        ddeS src c = doesDirectoryExist (src <> c)
 
 readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
 readSCXMLfiles sourcePath = do

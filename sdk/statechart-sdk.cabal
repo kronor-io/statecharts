@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           statechart-sdk
-version:        0.1.0.0
+version:        0.1.1.1
 description:    Statechart SDK (Statechart definitions and build tool)
 author:         Kronor.io
 maintainer:     dev@kronor.io

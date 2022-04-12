@@ -1,6 +1,6 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
               name="chart3"
-              version="1.0"
+              version="0.3"
               initial="s1">
   <state id="s1" name="s1n">
     <transition event="ev1" target="s2"/>
