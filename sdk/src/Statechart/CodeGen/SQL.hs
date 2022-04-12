@@ -12,16 +12,20 @@ import Statechart.Helpers
 import Statechart.Types
 import System.FilePath.Posix (dropExtension)
 
-writeSQLs :: FilePath -> [(FilePath, Text)] -> IO ()
+writeSQLs :: FilePath -> [(FilePath, Text, Version, Text)] -> IO ()
 writeSQLs targetPath xs =
-    forM_ xs $ \(path, body) ->
-        BS.writeFile (targetPath <> dropExtension path <> ".sql") (T.encodeUtf8 body)
+    forM_ xs $ \(path, name, version, body) ->
+        --BS.writeFile (targetPath <> dropExtension path <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
+        BS.writeFile (targetPath <> T.unpack (prepareName name) <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
+ where
+   prepareName :: Text -> Text
+   prepareName = T.replace "." "/"
 
-generateSQL :: [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text)]
+generateSQL :: [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
 generateSQL =
     fmap $ \(x, _bs, a) ->
         let code = gen (GenConfig (T.pack (dropExtension x)) (name a) (version a)) a
-         in (x, code)
+         in (x, name a, version a, code)
 
 -------------
 -- HELPERS --
