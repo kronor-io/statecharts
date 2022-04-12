@@ -42,7 +42,7 @@ data Chart s e = Chart
     , initial :: s
     , states :: [State s e]
     }
-    deriving (Show, Eq, Generic) -- TODO are we using json here?
+    deriving (Show, Eq, Generic)
 
 data Content e
     = Script Text -- TODO call it ActionName
