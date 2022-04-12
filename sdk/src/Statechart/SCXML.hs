@@ -14,7 +14,6 @@ import Text.XML qualified as XML
 import Text.XML.Cursor
 import Prelude qualified
 
--- TODO isnt this related to any IO? seems more like a helper
 -- XXX will consume lot of memory if used on large directories
 listDirectoryRecursive :: FilePath -> IO [FilePath]
 listDirectoryRecursive src = go src

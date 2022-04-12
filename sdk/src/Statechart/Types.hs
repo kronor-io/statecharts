@@ -1,6 +1,5 @@
 module Statechart.Types where
 
-import Data.Aeson
 import RIO
 import RIO.Text qualified as T
 import Data.Text qualified as Text
@@ -25,8 +24,6 @@ instance IsString EventName where
 newtype Version = Version (Int64, Int64)
     deriving (Generic)
     deriving newtype (Eq,Show)
-instance FromJSON Version
-instance ToJSON Version
 instance Hashable Version
 instance IsString Version where
     fromString = unsafeEr . fromText . T.pack

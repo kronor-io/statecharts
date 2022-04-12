@@ -15,7 +15,6 @@ import System.FilePath.Posix (dropExtension)
 writeSQLs :: FilePath -> [(FilePath, Text, Version, Text)] -> IO ()
 writeSQLs targetPath xs =
     forM_ xs $ \(path, name, version, body) ->
-        --BS.writeFile (targetPath <> dropExtension path <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
         BS.writeFile (targetPath <> T.unpack (prepareName name) <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
  where
    prepareName :: Text -> Text
@@ -35,7 +34,7 @@ generateSQL =
 data GenConfig = GenConfig
     { cfgFile :: Text
     , cfgName :: Text
-    , cfgVersion :: Version -- TODO been discarded?
+    , cfgVersion :: Version
     }
 
 -- | So we can generate SQL from any chart.
@@ -63,8 +62,6 @@ transitionArea chart =
 
 header :: Text -> Text
 header name = [i|-- Deploy kronor:statechart/#{name} to pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
-
--- TODO just notice we do not generate the revert and verify part of the migration
 
 fnBody :: GenConfig -> Text -> Text
 fnBody GenConfig{..} body =
