@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -- | This module is used to generate Haskell code from a chart.
 module Statechart.CodeGen.Haskell (writeHaskells, generateHaskell, genCodeFromChart, genCodeFromFile) where
 
@@ -81,7 +83,25 @@ genStateTypes flowName stateNames =
             Nothing
             []
             (AppT (nameC "AsText") (ConT dataName))
-            [FunD (mkName "toText") (zipWith (\name real -> Clause [ConP name []] (NormalB (LitE (StringL real))) []) names (T.unpack <$> stateNames))]
+            [ FunD
+                (mkName "toText")
+                ( zipWith
+                    ( \name real ->
+                        Clause
+                            [ ConP
+                                name
+#if MIN_VERSION_template_haskell(2, 18, 0)
+                                []
+#endif
+                                []
+                            ]
+                            (NormalB (LitE (StringL real)))
+                            []
+                    )
+                    names
+                    (T.unpack <$> stateNames)
+                )
+            ]
         ]
   where
     dataName = mkName . pascal . T.unpack $ flowName <> "_states"
@@ -97,7 +117,25 @@ genEventTypes flowName eventNames =
             Nothing
             []
             (AppT (nameC "AsText") (ConT dataName))
-            [FunD (mkName "toText") (zipWith (\name real -> Clause [ConP name []] (NormalB (LitE (StringL real))) []) names (T.unpack <$> eventNames))]
+            [ FunD
+                (mkName "toText")
+                ( zipWith
+                    ( \name real ->
+                        Clause
+                            [ ConP
+                                name
+#if MIN_VERSION_template_haskell(2, 18, 0)
+                                []
+#endif
+                                []
+                            ]
+                            (NormalB (LitE (StringL real)))
+                            []
+                    )
+                    names
+                    (T.unpack <$> eventNames)
+                )
+            ]
         ]
   where
     dataName = mkName . pascal . T.unpack $ flowName <> "_events"
