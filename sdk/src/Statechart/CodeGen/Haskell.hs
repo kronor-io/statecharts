@@ -16,6 +16,7 @@ import Statechart.Types as Types
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath.Posix (dropExtension, takeExtension)
 import Text.Casing
+import Data.String.Interpolate (__i'L)
 
 createDirectoryRecursive :: FilePath -> FilePath -> IO ()
 createDirectoryRecursive src fp = do
@@ -52,7 +53,19 @@ generateHaskell =
             fn = dotToDash mn <> ".hs"
             flowName = filter (/= '.') mn
         code <- runQ $ genCodeFromChart (T.pack flowName) a
-        let header = T.pack $ "module " <> mn <> " where\n\nimport RIO\nimport Types\n\n-- FILE AUTOMATICALLY\n-- GENERATED. DO NOT CHANGE IT\n-- MANUALLY. CHANGES MIGHT BE OVERWRITTEN.\n\n"
+        let header = [__i'L|
+            {-\# LANGUAGE OverloadedStrings \#-}
+
+            module #{mn} where
+
+            import RIO
+            import Statechart.Types
+
+            -- FILE AUTOMATICALLY
+            -- GENERATED. DO NOT CHANGE IT
+            -- MANUALLY. CHANGES MIGHT BE OVERWRITTEN.
+
+            |]
         return (fn, header <> T.pack (pprint code))
 
 genCodeFromChart :: Text -> Chart StateName EventName -> Q [Dec]
