@@ -91,13 +91,36 @@ genCodeFromFile flowName (T.unpack -> path) = do
 genStateTypes :: FlowName -> [Text] -> Q [Dec]
 genStateTypes flowName stateNames =
     return
-        [ DataD [] dataName [] Nothing (map (`NormalC` []) names) [DerivClause Nothing [nShow, nEq, nOrd]]
+        [ DataD [] dataName [] Nothing (map (`NormalC` []) names) [DerivClause Nothing [nEq, nOrd]]
         , InstanceD
             Nothing
             []
             (AppT (nameC "AsText") (ConT dataName))
             [ FunD
                 (mkName "toText")
+                ( zipWith
+                    ( \name real ->
+                        Clause
+                            [ ConP
+                                name
+#if MIN_VERSION_template_haskell(2, 18, 0)
+                                []
+#endif
+                                []
+                            ]
+                            (NormalB (LitE (StringL real)))
+                            []
+                    )
+                    names
+                    (T.unpack <$> stateNames)
+                )
+            ]
+        , InstanceD
+            Nothing
+            []
+            (AppT (nameC "Show") (ConT dataName))
+            [ FunD
+                (mkName "show")
                 ( zipWith
                     ( \name real ->
                         Clause
@@ -125,13 +148,36 @@ genStateTypes flowName stateNames =
 genEventTypes :: FlowName -> [Text] -> Q [Dec]
 genEventTypes flowName eventNames =
     return
-        [ DataD [] dataName [] Nothing (map (`NormalC` []) names) [DerivClause Nothing [nShow, nEq, nOrd]]
+        [ DataD [] dataName [] Nothing (map (`NormalC` []) names) [DerivClause Nothing [nEq, nOrd]]
         , InstanceD
             Nothing
             []
             (AppT (nameC "AsText") (ConT dataName))
             [ FunD
                 (mkName "toText")
+                ( zipWith
+                    ( \name real ->
+                        Clause
+                            [ ConP
+                                name
+#if MIN_VERSION_template_haskell(2, 18, 0)
+                                []
+#endif
+                                []
+                            ]
+                            (NormalB (LitE (StringL real)))
+                            []
+                    )
+                    names
+                    (T.unpack <$> eventNames)
+                )
+            ]
+        , InstanceD
+            Nothing
+            []
+            (AppT (nameC "Show") (ConT dataName))
+            [ FunD
+                (mkName "show")
                 ( zipWith
                     ( \name real ->
                         Clause
@@ -268,9 +314,6 @@ nameC = ConT . mkName
 
 nameE :: String -> Exp
 nameE = ConE . mkName
-
-nShow :: Type
-nShow = nameC "Show"
 
 nEq :: Type
 nEq = nameC "Eq"
