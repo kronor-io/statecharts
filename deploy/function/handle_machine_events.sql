@@ -149,7 +149,13 @@ BEGIN;
           for on_exit_function_call in
             with
 
-              all_states as (
+              target_states as (
+                select *
+                from
+                  unnest(state_transition.target_state || state_transition.children_target_states)
+              )
+
+            , source_states as (
                 select *
                 from
                   unnest(state_transition.children_source_states || state_transition.source_state)
@@ -166,11 +172,13 @@ BEGIN;
                 set exited_at = clock_timestamp()
                 where shard_id = shard
                   and state_machine_id = machine_id
-                  and state_id in (select a.id from all_states a)
+                  and state_id in (select a.id from source_states a)
+                  -- if we are looping into the same state, we don't want to mark the current state as exited
+                  and state_id not in (select a.id from target_states a)
                   and exited_at is null
               )
 
-            select shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from all_states
+            select shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from source_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((on_exit_function_call.on_exit).schema_name, 'public')
@@ -193,10 +201,16 @@ BEGIN;
           for on_entry_function_call in
             with
 
-              all_states as (
+              target_states as (
                 select *
                 from
                   unnest(state_transition.target_state || state_transition.children_target_states)
+              )
+
+            , source_states as (
+                select *
+                from
+                  unnest(state_transition.children_source_states || state_transition.source_state)
               )
 
             , new_states as (
@@ -206,10 +220,16 @@ BEGIN;
                   , machine_id as state_machine_id
                   , a.statechart_id
                   , a.id as state_id
-                from all_states a
+                from target_states a
+                -- We allow transitioning back to the same state (a loop)
+                -- but for storage reasons, we prefer not to insert those rows again
+                -- here, we exclude target states that are identical to the source state
+                where a.id not in (
+                  select x.id from source_states x
+                )
               )
 
-            select shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from all_states
+            select shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from target_states
           loop
             execute format('select %I.%I(%L::fsm_event_payload)',
                 coalesce((on_entry_function_call.on_entry).schema_name, 'public')

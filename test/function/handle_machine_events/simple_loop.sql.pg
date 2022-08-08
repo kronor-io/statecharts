@@ -1,0 +1,119 @@
+BEGIN;
+  select no_plan();
+
+  \set shard 7000000001
+  \set chart 9000000001
+
+  insert into fsm.statechart (id, name, version) values (:chart, 'search', 1::semver);
+
+  insert into fsm.state
+    (statechart_id , id           , name                 , parent_id , is_initial , is_final) values
+    (:chart        , 'initial'    , 'Initial'            , null      , true       , false)           ,
+    (:chart        , 'searching'  , 'Searching'          , null      , false      , false)           ,
+    (:chart        , 'displaying' , 'Displaying Results' , null      , false      , false)           ,
+    (:chart        , 'zoomed_in'  , 'Zoomed In'          , null      , false      , false);
+
+  insert into fsm.transition
+    (statechart_id , event      , source_state , target_state) values
+    (:chart        , 'search'   , 'initial'    , 'searching')         ,
+    (:chart        , 'retry'    , 'searching'  , 'searching')         ,
+    (:chart        , 'results'  , 'searching'  , 'displaying')        ,
+    (:chart        , 'zoom'     , 'displaying' , 'zoomed_in')         ,
+    (:chart        , 'zoom_out' , 'zoomed_in'  , 'displaying');
+
+  -- creating a new machine should be a function
+  select id as machine from fsm.create_machine(:shard, :chart) \gset
+  select fsm.start_machine(:shard, :machine);
+
+  -- transition to the search state
+
+  select fsm.notify_state_machine(:shard, :machine, 'search');
+
+  select lives_ok(
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
+    'handled a single simple event'
+  );
+
+  select is(count(*), 0::bigint, 'all events should be handled')
+  from fsm.state_machine_event
+  where shard_id = :shard and state_machine_id = :machine and handled_at is null;
+
+  select isnt(exited_at, null, 'should have exited the initial event')
+  from fsm.state_machine_state
+  where shard_id = :shard and state_machine_id = :machine and state_id = 'initial';
+
+  select is(count(*), 1::bigint, 'there sould only be one active state')
+  from fsm.state_machine_state
+  where shard_id = :shard and state_machine_id = :machine and exited_at is null;
+
+  select is(state_id, 'searching', 'the active state should be searching')
+  from fsm.state_machine_state
+  where shard_id = :shard and state_machine_id = :machine and exited_at is null;
+
+  -- transition again to the searching state
+  select fsm.notify_state_machine(:shard, :machine, 'retry');
+
+  select lives_ok(
+    format($$ select fsm.handle_machine_events(%s, %s) $$, :shard, :machine),
+    'handled a single simple event'
+  );
+
+  select is(count(*), 0::bigint, 'all events should be handled')
+  from fsm.state_machine_event
+  where shard_id = :shard and state_machine_id = :machine and handled_at is null;
+
+  select is(count(*), 1::bigint, 'there sould only be one active state')
+  from fsm.state_machine_state
+  where shard_id = :shard and state_machine_id = :machine and exited_at is null;
+
+  select is(count(*), 1::bigint, 'only one searching state should have been inserted')
+  from fsm.state_machine_state
+  where shard_id = :shard and state_machine_id = :machine and state_id = 'searching';
+
+  -- verify that callbacks are called in the loop
+
+  -- will be used to track which callbacks were executed
+  create temporary table pg_temp.callbacks_called (
+    id bigint,
+    event text,
+    data jsonb,
+    from_state text,
+    to_state text,
+    payload_type text
+  );
+
+  -- will be used as the callback for all states as the witness that they are called
+  create or replace function pg_temp.log_callback_execution(payload fsm_event_payload)
+    returns void as
+    $$
+    begin
+        insert into pg_temp.callbacks_called
+        (id, event, data, from_state, to_state, payload_type) values
+        ( payload.machine_id
+        , payload.event_name
+        , payload.data
+        , payload.from_state
+        , payload.to_state
+        , payload.payload_type);
+    end
+    $$ language plpgsql volatile;
+
+  update fsm.state set
+      on_entry = Array[('pg_temp', 'log_callback_execution')]::fsm_callback_name[]
+    , on_exit = Array[('pg_temp', 'log_callback_execution')]::fsm_callback_name[]
+  where statechart_id = :chart;
+
+  -- transition again to the searching state
+  select fsm.notify_state_machine(:shard, :machine, 'retry');
+
+  select is(count(*), 1::bigint, 'there is one on_entry event')
+  from pg_temp.callbacks_called
+  where payload_type = 'on_entry';
+
+  select is(count(*), 1::bigint, 'there is one on_exit event')
+  from pg_temp.callbacks_called
+  where payload_type = 'on_exit';
+
+  select finish();
+ROLLBACK;
+
