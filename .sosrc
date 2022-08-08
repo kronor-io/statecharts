@@ -6,3 +6,4 @@
   commands:
     - docker compose exec postgres sqitch deploy
     - docker compose exec postgres sqitch rebase -y --onto \1^
+    - docker compose exec postgres pg_prove
