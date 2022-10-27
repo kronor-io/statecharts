@@ -20,8 +20,8 @@ runSpec :: (AsText a, AsText b, Eq a) => Text -> Version -> Chart a b -> Spec
 runSpec name semver chart = do
     expectedSql <- fromRight undefined . T.decodeUtf8' <$> runIO (BS.readFile $ "test/Plugin/SQL/" <> T.unpack name <> ".sql")
     describe (T.unpack name <> " sql generation") $ do
-        it "returns what we expect" (gensSql name semver chart expectedSql)
+        it "returns what we expect" (gensSql "kronor:statechart" name semver chart expectedSql)
 
-gensSql :: (Eq s, AsText e, AsText s) => Text -> Version -> Chart s e -> Text -> Expectation
-gensSql name semver chart result =
-  SQL.gen (SQL.GenConfig name name semver) chart `shouldBe` result
+gensSql :: (Eq s, AsText e, AsText s) => Text -> Text -> Version -> Chart s e -> Text -> Expectation
+gensSql prefix name semver chart result =
+  SQL.gen (SQL.GenConfig prefix name name semver) chart `shouldBe` result
