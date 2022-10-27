@@ -57,6 +57,12 @@ data GenConfig = GenConfig
     , cfgVersion :: Version
     }
 
+versionToSql :: Version  -> Text
+versionToSql (Version (a, b, c)) =
+  if c == 0
+  then [i|#{a}.#{b}::semver|] -- compatibility with existing deploy scripts.
+  else [i|'#{a}.#{b}.#{c}'::semver|]
+
 -- | So we can generate a verify SQL script from any chart.
 genVerify :: GenConfig -> Text
 genVerify GenConfig{..} =
@@ -67,7 +73,7 @@ BEGIN;
 select *
 from fsm.statechart
 where name = '#{cfgName}'
-and version = '#{toText cfgVersion}'
+and version = #{versionToSql cfgVersion}
 limit 1;
 
 ROLLBACK;
@@ -83,7 +89,7 @@ BEGIN;
 with chart as (
     delete from fsm.statechart
     where name = '#{cfgName}'
-    and version = '#{toText cfgVersion}'
+    and version = #{versionToSql cfgVersion}
     returning id
 )
 delete from fsm.state
@@ -131,7 +137,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('#{cfgName}', #{toText cfgVersion}::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('#{cfgName}', #{versionToSql cfgVersion}) returning id into chart;
 #{body}
 end
 $$;

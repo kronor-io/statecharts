@@ -3,7 +3,8 @@ module Statechart.Types where
 import RIO
 import RIO.Text qualified as T
 import Data.Text qualified as Text
-import Prelude (read)
+import Data.Text.Read qualified as Text.Read
+import Prelude ((!!))
 
 -- TODO This need to be reviewed and simplified moving foward.
 
@@ -21,7 +22,7 @@ instance AsText EventName where
 instance IsString EventName where
     fromString = unsafeEr . fromText . T.pack
 
-newtype Version = Version (Int64, Int64)
+newtype Version = Version (Int64, Int64, Int64)
     deriving (Generic)
     deriving newtype (Eq,Show)
 instance Hashable Version
@@ -29,8 +30,32 @@ instance IsString Version where
     fromString = unsafeEr . fromText . T.pack
 instance AsText Version where
     fromText t =
-      let [a,b] = Text.splitOn "." t in Right (Version (read (T.unpack a), read (T.unpack b)))
-    toText (Version (a, b)) = T.pack $ show a <> "." <> show b
+      let fragments = Text.splitOn "." t
+
+       in case length fragments of
+            3 -> first Text.pack $ do
+              (a, aR) <- Text.Read.decimal (fragments !! 0)
+              (b, bR) <- Text.Read.decimal (fragments !! 1)
+              (c, cR) <- Text.Read.decimal (fragments !! 2)
+              if any (not . Text.null) [aR, bR, cR]
+                then Left "Failed to parse semver"
+                else pure $ Version (a, b, c)
+            2 -> first Text.pack $ do
+              (a, aR) <- Text.Read.decimal (fragments !! 0)
+              (b, bR) <- Text.Read.decimal (fragments !! 1)
+              if any (not . Text.null) [aR, bR]
+                then Left "Failed to parse semver"
+                else pure $ Version (a, b, 0)
+            1 -> first Text.pack $ do
+              (a, aR) <- Text.Read.decimal (fragments !! 0)
+              if not (Text.null aR)
+                then Left "Failed to parse semver"
+                else pure $ Version (a, 0, 0)
+            _ -> Left "Failed to parse semver"
+    toText (Version (a, b, c)) =
+      if c == 0
+      then T.pack $ show a <> "." <> show b
+      else T.pack $ show a <> "." <> show b <> "." <> show c
 
 newtype ChartName = ChartName Text
     deriving (Eq, Show, Ord, Generic)
@@ -106,4 +131,3 @@ class AsText a where
 instance AsText Text where
     fromText = return
     toText = id
-
