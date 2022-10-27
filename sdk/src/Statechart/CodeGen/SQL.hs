@@ -1,6 +1,13 @@
 -- | This module contains functions for going from charts to sql files.
 -- Eventually it should be done with pretty printers to make it more robust (also pretty)
-module Statechart.CodeGen.SQL (writeSQLs, generateSQL, GenConfig (..), gen) where
+module Statechart.CodeGen.SQL (
+    writeSQLs,
+    generateSQL,
+    generateSQLVerify,
+    generateSQLRevert,
+    GenConfig (..),
+    gen,
+) where
 
 import Data.List qualified as List
 import Data.String.Interpolate (i, iii)
@@ -16,14 +23,26 @@ writeSQLs :: FilePath -> [(FilePath, Text, Version, Text)] -> IO ()
 writeSQLs targetPath xs =
     forM_ xs $ \(path, name, version, body) ->
         BS.writeFile (targetPath <> T.unpack (prepareName name) <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
- where
-   prepareName :: Text -> Text
-   prepareName = T.replace "." "/"
+  where
+    prepareName :: Text -> Text
+    prepareName = T.replace "." "/"
 
-generateSQL :: [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
-generateSQL =
+generateSQL :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQL prefix =
     fmap $ \(x, _bs, a) ->
-        let code = gen (GenConfig (T.pack (dropExtension x)) (name a) (version a)) a
+        let code = gen (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a)) a
+         in (x, name a, version a, code)
+
+generateSQLVerify :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQLVerify prefix =
+    fmap $ \(x, _bs, a) ->
+        let code = genVerify (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a))
+         in (x, name a, version a, code)
+
+generateSQLRevert :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQLRevert prefix =
+    fmap $ \(x, _bs, a) ->
+        let code = genRevert (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a))
          in (x, name a, version a, code)
 
 -------------
@@ -32,15 +51,51 @@ generateSQL =
 
 -- | Configuration for the generation.
 data GenConfig = GenConfig
-    { cfgFile :: Text
+    { cfgPrefix :: Text
+    , cfgFile :: Text
     , cfgName :: Text
     , cfgVersion :: Version
     }
 
+-- | So we can generate a verify SQL script from any chart.
+genVerify :: GenConfig -> Text
+genVerify GenConfig{..} =
+    let h = verifyHeader cfgPrefix cfgFile
+     in [i|#{h}
+BEGIN;
+
+select *
+from fsm.statechart
+where name = '#{cfgName}'
+and version = '#{toText cfgVersion}'
+limit 1;
+
+ROLLBACK;
+|]
+
+-- | So we can generate a revert SQL script from any chart.
+genRevert :: GenConfig -> Text
+genRevert GenConfig{..} =
+    let h = revertHeader cfgPrefix cfgFile
+     in [i|#{h}
+BEGIN;
+
+with chart as (
+    delete from fsm.statechart
+    where name = '#{cfgName}'
+    and version = '#{toText cfgVersion}'
+    returning id
+)
+delete from fsm.state
+    where statechart_id = (select id from chart);
+
+COMMIT;
+|]
+
 -- | So we can generate SQL from any chart.
 gen :: (AsText e, AsText s, Eq s) => GenConfig -> Chart s e -> Text
 gen GenConfig{..} chart =
-    let h = header cfgFile
+    let h = header cfgPrefix cfgFile
         s :: Text = stateArea chart
         t :: Text = transitionArea chart
         b = fnBody GenConfig{..} [iii|#{s}\n#{t}|]
@@ -60,8 +115,14 @@ transitionArea chart =
         header_ = ii "transition"
      in [iii| #{header_} (statechart_id, event, source_state, target_state) values\n#{x};|]
 
-header :: Text -> Text
-header name = [i|-- Deploy kronor:statechart/#{name} to pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
+verifyHeader :: Text -> Text -> Text
+verifyHeader prefix name = [i|-- Verify #{prefix}/#{name} on pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
+
+revertHeader :: Text -> Text -> Text
+revertHeader prefix name = [i|-- Revert #{prefix}/#{name} from pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
+
+header :: Text -> Text -> Text
+header prefix name = [i|-- Deploy #{prefix}/#{name} to pg\n\n-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN\n\n|]
 
 fnBody :: GenConfig -> Text -> Text
 fnBody GenConfig{..} body =
