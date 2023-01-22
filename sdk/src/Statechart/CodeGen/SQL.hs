@@ -27,22 +27,28 @@ writeSQLs targetPath xs =
     prepareName :: Text -> Text
     prepareName = T.replace "." "/"
 
+mkCfgFile :: Text -> Version -> Text
+mkCfgFile chartName chartVersion = prepareName chartName <> "-" <> toText chartVersion
+  where
+    prepareName :: Text -> Text
+    prepareName = T.replace "." "/"
+
 generateSQL :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
 generateSQL prefix =
     fmap $ \(x, _bs, a) ->
-        let code = gen (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a)) a
+        let code = gen (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a)) a
          in (x, name a, version a, code)
 
 generateSQLVerify :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
 generateSQLVerify prefix =
     fmap $ \(x, _bs, a) ->
-        let code = genVerify (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a))
+        let code = genVerify (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a))
          in (x, name a, version a, code)
 
 generateSQLRevert :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
 generateSQLRevert prefix =
     fmap $ \(x, _bs, a) ->
-        let code = genRevert (GenConfig prefix (T.pack (dropExtension x)) (name a) (version a))
+        let code = genRevert (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a))
          in (x, name a, version a, code)
 
 -------------
