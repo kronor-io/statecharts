@@ -1,4 +1,4 @@
--- Deploy statecharts:function/handle_machine_events to pg
+-- Revert statecharts:function/handle_machine_events to pg
 
 BEGIN;
 
