@@ -2,21 +2,6 @@
 
 BEGIN;
 
-
- set client_min_messages TO warning;
- drop type if exists fsm_event_payload restrict;
- reset client_min_messages;
-
-  create type fsm_event_payload as
-  ( shard_id bigint
-  , machine_id bigint
-  , event_name text
-  , data jsonb
-  , from_state text
-  , to_state text
-  , payload_type text
-  );
-
   create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
     returns void as
   $$
@@ -25,10 +10,6 @@ BEGIN;
       state_transition record;
       on_exit_function_call record;
       on_entry_function_call record;
-      error_message text;
-      error_state text;
-      error_context text;
-      error_detail text;
     begin
 
       -- First mark all pending events as handled and then select the set of source
@@ -192,7 +173,7 @@ BEGIN;
                 , 'on_exit'
                 )::fsm_event_payload
               );
-          end loop;
+           end loop;
           -- source-exiting}}}
 
           -- now we do the same for the target states, but in reverse order. We enter states from the
@@ -274,18 +255,6 @@ BEGIN;
       end loop;
 
       return;
-
-    exception when others then
-      get stacked diagnostics
-        error_message = message_text,
-        error_context = pg_exception_context,
-        error_detail = pg_exception_detail,
-        error_state = returned_sqlstate;
-      raise exception
-      using errcode = error_state,
-            message = error_message,
-            detail = error_detail,
-            hint = format($e$Error while handling state machine event: %s$e$, error_context);
     end;
   $$ language plpgsql volatile strict;
 
