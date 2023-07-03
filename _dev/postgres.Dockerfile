@@ -3,7 +3,7 @@ FROM postgres:15
 RUN apt-get -qq update \
     && apt-get -qq --no-install-recommends install \
     # required by squitch
-    less libperl5.32 perl-doc nano ca-certificates git \
+    less libperl5.34 perl-doc nano ca-certificates git \
     libpq5 postgresql-client-15 \
     # required by pgtap
     libtap-parser-sourcehandler-pgtap-perl postgresql-15-pgtap \
