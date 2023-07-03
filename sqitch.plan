@@ -23,3 +23,7 @@ function/start_machine_with_latest_statechart 2021-07-05T15:13:07Z root <root@aa
 function/notify_state_machine 2021-07-07T13:42:36Z root <root@aa3dfe7c2fa8> # Add a function to insert events for a state machine
 function/is_valid_transition 2021-08-19T13:05:53Z root <root@b3b97d2b6355> # Add function to check if the transition is valid
 function/is_state_active 2021-08-30T12:59:23Z root <root@9e6fcc210c12> # Function for checking current state of machine
+type/fsm_event_payload 2023-07-03T18:55:31Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # The payload for machine events
+@0.9 2023-07-03T19:01:15Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # version 0.9
+function/handle_machine_events [function/handle_machine_events@0.9] 2023-07-03T19:01:33Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # remove sub transactions
+@1.0 2023-07-03T19:02:14Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # removed sub transactions in handling code
