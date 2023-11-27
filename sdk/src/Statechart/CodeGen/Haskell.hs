@@ -206,13 +206,15 @@ stateValueName state = mkName $ "state" <> pascal (T.unpack state)
 eventTypeName :: FlowName -> Text -> Language.Haskell.TH.Name
 eventTypeName flowName = makeEventTypeName . T.unpack
   where
+    eventDataNameText = flowName <> "_events"
     replacePointsForUnderScores = map (\c -> if c == '.' then '_' else c)
-    makeEventTypeName = mkName . pascal . replacePointsForUnderScores
+    makeEventTypeName = mkName . (pascal (T.unpack eventDataNameText) <>) . pascal . replacePointsForUnderScores
 
 stateTypeName :: FlowName -> Text -> Language.Haskell.TH.Name
 stateTypeName flowName = stateToName . T.unpack
   where
-    stateToName = mkName . pascal
+    stateDataNameText = flowName <> "_states"
+    stateToName = mkName . (pascal (T.unpack stateDataNameText) <>) . pascal
 
 ----------------------------------------------------------------------------
 
@@ -230,7 +232,8 @@ genChartStructure flowName Chart{..} = do
     return [variable]
   where
     variableName = mkName $ camel (T.unpack flowName)
-    initialStateTypeName = mkName . pascal $ T.unpack (toText initial)
+    dataNameText = flowName <> "_states"
+    initialStateTypeName = mkName . (pascal (T.unpack dataNameText) <>) . pascal $ T.unpack (toText initial)
 
 genTypesFromChart :: (AsText e, AsText s) => FlowName -> Chart s e -> Q [Dec]
 genTypesFromChart flowName chart = do
@@ -261,7 +264,8 @@ genStateDec flowName state =
         (NormalB $ bodyExp state)
         []
   where
-    stateTypeName_ = mkName . pascal $ T.unpack $ toText $ sid state
+    dataNameText = flowName <> "_states"
+    stateTypeName_ = mkName . (pascal (T.unpack dataNameText) <>) . pascal $ T.unpack $ toText $ sid state
     decName = stateValueName $ toText $ sid state
     onentryExp = ListE . fmap (genContentExp flowName) . onEntry $ state
     onexitExp = ListE . fmap (genContentExp flowName) . onExit $ state
@@ -297,7 +301,7 @@ genStateDec flowName state =
         applyExpression
             [ nameE "MultiState"
             , ConE stateTypeName_
-            , nameE . pascal . T.unpack . toText $ msInitial
+            , nameE . (pascal (T.unpack dataNameText) <>) . pascal . T.unpack . toText $ msInitial
             , ListE $ VarE . stateValueName . toText . Types.sid <$> subStates -- sid
             , ListE $ genTransitionExp flowName (toText sid) <$> transitions
             , LitE . StringL . T.unpack $ description
