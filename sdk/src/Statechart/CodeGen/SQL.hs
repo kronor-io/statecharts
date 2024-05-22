@@ -12,17 +12,19 @@ module Statechart.CodeGen.SQL (
 import Data.List qualified as List
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
+import Path
+import Path.IO
 import RIO
 import RIO.ByteString qualified as BS
 import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
-import System.FilePath.Posix (dropExtension)
 
-writeSQLs :: FilePath -> [(FilePath, Text, Version, Text)] -> IO ()
-writeSQLs targetPath xs =
-    forM_ xs $ \(path, name, version, body) ->
-        BS.writeFile (targetPath <> T.unpack (prepareName name) <> "-" <> T.unpack (toText version <> ".sql")) (T.encodeUtf8 body)
+writeSQLs :: Path Abs Dir -> [(Text, Version, Text)] -> IO ()
+writeSQLs targetDir xs =
+    forM_ xs $ \(name, version, body) -> do
+        fp <- resolveFile targetDir (T.unpack (prepareName name) <> "-" <> T.unpack (toText version <> ".sql"))
+        BS.writeFile (fromAbsFile fp) (T.encodeUtf8 body)
   where
     prepareName :: Text -> Text
     prepareName = T.replace "." "/"
@@ -33,23 +35,23 @@ mkCfgFile chartName chartVersion = prepareName chartName <> "-" <> toText chartV
     prepareName :: Text -> Text
     prepareName = T.replace "." "/"
 
-generateSQL :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQL :: Text -> [(Chart StateName EventName)] -> [(Text, Version, Text)]
 generateSQL prefix =
-    fmap $ \(x, _bs, a) ->
+    fmap $ \a ->
         let code = gen (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a)) a
-         in (x, name a, version a, code)
+         in (name a, version a, code)
 
-generateSQLVerify :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQLVerify :: Text -> [Chart StateName EventName] -> [(Text, Version, Text)]
 generateSQLVerify prefix =
-    fmap $ \(x, _bs, a) ->
+    fmap $ \a ->
         let code = genVerify (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a))
-         in (x, name a, version a, code)
+         in (name a, version a, code)
 
-generateSQLRevert :: Text -> [(FilePath, ByteString, Chart StateName EventName)] -> [(FilePath, Text, Version, Text)]
+generateSQLRevert :: Text -> [Chart StateName EventName] -> [(Text, Version, Text)]
 generateSQLRevert prefix =
-    fmap $ \(x, _bs, a) ->
+    fmap $ \a ->
         let code = genRevert (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a))
-         in (x, name a, version a, code)
+         in (name a, version a, code)
 
 -------------
 -- HELPERS --

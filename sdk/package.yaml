@@ -61,9 +61,11 @@ default-extensions:
 
 dependencies:
   - base >= 4.11 && < 10
+  - path
+  - path-io
   - rio >= 0.1.12.0
-  - template-haskell
   - string-interpolate
+  - template-haskell
 
 library:
   source-dirs:
@@ -77,9 +79,6 @@ library:
     - bytestring
     - text
     - aeson
-    - filepath
-    - directory
-    - tar
 
 tests:
   statechart-sdk-test:
@@ -91,7 +90,7 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - statechart-sdk
-      - hspec
-      - hspec-discover
+      - sydtest
+      - sydtest-discover
       - directory
       - file-embed
