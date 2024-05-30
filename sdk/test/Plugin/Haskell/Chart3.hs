@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -ddump-splices #-}
 {-# OPTIONS_GHC -ddump-to-file #-}
+{-# OPTIONS_GHC -w #-}
 
 module Plugin.Haskell.Chart3 where
 

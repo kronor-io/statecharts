@@ -4,11 +4,8 @@ import Helper
 import Plugin.Haskell.Chart1
 import Plugin.Haskell.Chart2
 import Plugin.Haskell.Chart3
-import RIO.ByteString qualified as BS
-import RIO.Map qualified as M
 import RIO.Text qualified as T
 import Statechart.CodeGen.SQL qualified as SQL
-import System.Directory
 
 spec :: Spec
 spec = do
@@ -18,10 +15,7 @@ spec = do
 
 runSpec :: (AsText a, AsText b, Eq a) => Text -> Version -> Chart a b -> Spec
 runSpec name semver chart = do
-    expectedSql <- fromRight undefined . T.decodeUtf8' <$> runIO (BS.readFile $ "test/Plugin/SQL/" <> T.unpack name <> ".sql")
     describe (T.unpack name <> " sql generation") $ do
-        it "returns what we expect" (gensSql "kronor:statechart" name semver chart expectedSql)
-
-gensSql :: (Eq s, AsText e, AsText s) => Text -> Text -> Version -> Chart s e -> Text -> Expectation
-gensSql prefix name semver chart result =
-  SQL.gen (SQL.GenConfig prefix name name semver) chart `shouldBe` result
+        it "returns the same sql as before" $
+            pureGoldenTextFile ("test/Plugin/SQL/" <> T.unpack name <> ".sql") $
+                SQL.gen (SQL.GenConfig "kronor:statechart" name name semver) chart

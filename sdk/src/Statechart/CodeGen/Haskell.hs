@@ -13,27 +13,19 @@ import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.SCXML qualified as SCXML
 import Statechart.Types as Types
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath.Posix (dropExtension, takeExtension)
 import Text.Casing
 import Data.String.Interpolate (__i'L)
+import Path
+import Path.IO
 
-createDirectoryRecursive :: FilePath -> FilePath -> IO ()
-createDirectoryRecursive src fp = do
-    let dir = takeWhile (/= '/') fp
-    if dir == "" || takeExtension dir /= ""
-        then return ()
-        else do
-            createDirectoryIfMissing True (src <> dir)
-            createDirectoryRecursive (src <> dir <> "/") (drop 1 (dropWhile (/= '/') fp))
-
-writeHaskells :: FilePath -> [(FilePath, Text)] -> IO ()
-writeHaskells targetPath xs = do
-    createDirectoryIfMissing True targetPath
+writeHaskells :: Path Abs Dir -> [(Path Rel File, Text)] -> IO ()
+writeHaskells targetDir xs = do
+    ensureDir targetDir
     forM_ xs $ \(path, body) -> do
-        let finalPath = targetPath <> dropExtension path <> ".hs"
-        createDirectoryRecursive targetPath path
-        BS.writeFile finalPath (T.encodeUtf8 body)
+        relHaskellFile <- replaceExtension ".hs" path 
+        let fp = targetDir </> relHaskellFile
+        ensureDir (parent fp)
+        BS.writeFile (fromAbsFile fp) (T.encodeUtf8 body)
 
 dotToDash :: String -> String
 dotToDash [] = []
@@ -46,9 +38,9 @@ capsAfterDot ('.' : c : xs) = '.' : toUpper c : capsAfterDot xs
 capsAfterDot (x : xs) = x : capsAfterDot xs
 
 -- | This function needs to be in IO so we run the Q monad with the templates.
-generateHaskell :: [(FilePath, ByteString, Chart StateName EventName)] -> IO [(FilePath, Text)]
+generateHaskell :: [Chart StateName EventName] -> IO [(FilePath, Text)]
 generateHaskell =
-    mapM $ \(_, __bs, a) -> do
+    mapM $ \a -> do
         let mn = pascal (capsAfterDot (T.unpack $ name a))
             fn = dotToDash mn <> ".hs"
             flowName = filter (/= '.') mn
@@ -204,13 +196,13 @@ stateValueName :: Text -> Language.Haskell.TH.Name
 stateValueName state = mkName $ "state" <> pascal (T.unpack state)
 
 eventTypeName :: FlowName -> Text -> Language.Haskell.TH.Name
-eventTypeName flowName = makeEventTypeName . T.unpack
+eventTypeName _ = makeEventTypeName . T.unpack
   where
     replacePointsForUnderScores = map (\c -> if c == '.' then '_' else c)
     makeEventTypeName = mkName . pascal . replacePointsForUnderScores
 
 stateTypeName :: FlowName -> Text -> Language.Haskell.TH.Name
-stateTypeName flowName = stateToName . T.unpack
+stateTypeName _ = stateToName . T.unpack
   where
     stateToName = mkName . pascal
 

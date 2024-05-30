@@ -1,31 +1,107 @@
 module Statechart.CodeGen.Visualization where
 
-import Codec.Archive.Tar qualified as Tar
-import Data.String.Interpolate (i)
-import Data.Text as T
 import RIO
-import RIO.ByteString qualified as BS
-import RIO.Text qualified as T
 import Statechart.Types
-import System.Directory (doesDirectoryExist)
+import qualified Data.Text as T
 
--- | We use this function to bring the javascript visualization tool from the statecharts repo to here.
-prepareVisuFiles :: FilePath -> IO ()
-prepareVisuFiles targetPath = do
-    let tarPath = "statecharts/data/visu.tar"
-    visuExists <- doesDirectoryExist (targetPath <> "/visualization")
-    unless visuExists $ do
-        Tar.extract targetPath tarPath
-        return ()
+generatePlantuml :: (AsText s, AsText e, Show s, Show e) => Chart s e -> Text
+generatePlantuml c =
+  T.unlines $
+    concat
+      [ [ "@startuml",
+          "",
+          "hide empty description",
+          "",
+          T.unwords ["note", T.pack (show (name c <> " version " <> toText (version c))), "as Name"],
+          "",
+          T.unwords ["[*] -->", toText (initial c)]
+        ],
+        concatMap generateStateUml (states c),
+        [ "",
+          "@enduml"
+        ]
+      ]
 
-writeVisu :: FilePath -> Text -> IO ()
-writeVisu targetPath = BS.writeFile targetPath . T.encodeUtf8
+generateStateUml :: (AsText s, AsText e, Show s, Show e) => State s e -> [Text]
+generateStateUml s = case s of
+  NormalState {..} ->
+    concat
+      [ [ generateStateId sid,
+          T.unwords [generateStateDescription sid description]
+        ],
+        map generateTransitionUml transitions,
+        map (generateOnEntry sid) onEntry,
+        map (generateOnExit sid) onExit
+      ]
+  MultiState {..} ->
+    concat
+      [ [ T.unwords [generateStateId sid, "{"]
+        ],
+        map
+          ("  " <>)
+          $ concat
+            [ [ T.unwords [generateStateDescription sid description],
+                T.unwords ["[*] -->", toText msInitial]
+              ],
+              concatMap generateStateUml subStates,
+              map (generateOnEntry sid) onEntry,
+              map (generateOnExit sid) onExit
+            ],
+        ["}"]
+      ]
+      ++ map generateTransitionUml transitions
+  Final {..} ->
+    concat
+      [ [ generateStateId sid,
+          T.unwords [generateStateDescription sid description],
+          T.unwords [toText sid, "--> [*]"]
+        ],
+        map (generateOnEntry sid) onEntry,
+        map (generateOnExit sid) onExit
+      ]
+  Parallel {..} ->
+    concat
+      [ [ T.unwords [generateStateId sid, "{"]
+        ],
+        map
+          ("  " <>)
+          $ concat
+            [ [T.unwords [generateStateDescription sid description]],
+              concatMap (\ss -> generateStateUml ss ++ ["||"]) regions,
+              map (generateOnEntry sid) onEntry,
+              map (generateOnExit sid) onExit
+            ],
+        ["}"]
+      ]
+      ++ map generateTransitionUml transitions
 
--- | This is used to prepare the javascript visualization tool to show the charts to us.
-generateVisualizationData :: [(FilePath, ByteString, Chart StateName EventName)] -> Text
-generateVisualizationData =
-    (header <>) . RIO.foldr genItems "\n];"
-  where
-    header = "var scxml = ["
-    item name dat = [i|\n{name: '#{name}', data: `#{dat}`}|]
-    genItems (f, bs, _) acc = item f bs <> (if acc == "\n];" then acc else "," <> acc)
+generateStateId :: (AsText s) => s -> Text
+generateStateId sid =
+  T.unwords ["state", toText sid]
+
+generateStateDescription :: (AsText s) => s -> Text -> Text
+generateStateDescription sid description =
+  T.unwords [toText sid, ":", description]
+
+generateTransitionUml :: (AsText s, AsText e) => Transition s e -> Text
+generateTransitionUml Transition {..} =
+  T.unwords
+    [ toText source,
+      if "done.state." `T.isPrefixOf` toText event'
+        then "-[#green,bold]->"
+        else "-->",
+      toText target,
+      ":",
+      toText event'
+    ]
+
+generateOnEntry :: (AsText s, AsText e) => s -> Content e -> Text
+generateOnEntry sid = generateContent sid "onentry"
+
+generateOnExit :: (AsText s, AsText e) => s -> Content e -> Text
+generateOnExit sid = generateContent sid "onexit"
+
+generateContent :: (AsText s, AsText e) => s -> Text -> Content e -> Text
+generateContent s d = \case
+  Script t -> T.unwords [toText s, ":", d, t]
+  Raise e -> T.unwords [toText s, ":", d, (toText e)]

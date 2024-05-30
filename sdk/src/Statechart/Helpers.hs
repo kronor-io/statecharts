@@ -4,26 +4,6 @@ import RIO
 import RIO.List (nub)
 import Statechart.Types
 
--- TODO organize and delete the functions that are not been used anymore.
-
-bimapState :: (s -> t) -> (e -> f) -> State s e -> State t f
-bimapState f_ g_ = \case
-    NormalState a b c d e -> NormalState (f_ a) (bimapEvent f_ g_ <$> b) c (fmap g_ <$> d) (fmap g_ <$> e)
-    MultiState a b c d e f g ->
-        MultiState
-            (f_ a)
-            (f_ b)
-            (bimapState f_ g_ <$> c)
-            (bimapEvent f_ g_ <$> d)
-            e
-            (fmap g_ <$> f)
-            (fmap g_ <$> g)
-    Final a b c d -> Final (f_ a) b (fmap g_ <$> c) (fmap g_ <$> d)
-    Parallel{} -> error "not implemented"
-
-bimapEvent :: (s -> t) -> (e -> f) -> Transition s e -> Transition t f
-bimapEvent f_ g_ (Transition e s t) = Transition (g_ e) (f_ s) (f_ t)
-
 getStateNames :: AsText s => Chart s e -> [StateName]
 getStateNames = map (unsafeEr . fromText . toText . sid) . getAllChartStates
 

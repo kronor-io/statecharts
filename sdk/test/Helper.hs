@@ -9,11 +9,12 @@ module Helper (
     shouldNotBe,
     shouldReturn,
     pending,
+    pureGoldenTextFile,
+    goldenTextFile,
     module RIO,
     module Statechart.Types,
 ) where
 
-import Data.String.Interpolate
 import RIO
 import Statechart.Types
-import Test.Hspec
+import Test.Syd

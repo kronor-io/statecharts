@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.36.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -83,11 +83,10 @@ library
     , bytestring
     , casing
     , containers
-    , directory
-    , filepath
+    , path
+    , path-io
     , rio >=0.1.12.0
     , string-interpolate
-    , tar
     , template-haskell
     , text
     , xml-conduit
@@ -102,6 +101,7 @@ test-suite statechart-sdk-test
       Plugin.Haskell.Chart1
       Plugin.Haskell.Chart2
       Plugin.Haskell.Chart3
+      VisualizationSpec
       Paths_statechart_sdk
   hs-source-dirs:
       test
@@ -161,10 +161,12 @@ test-suite statechart-sdk-test
       base >=4.11 && <10
     , directory
     , file-embed
-    , hspec
-    , hspec-discover
+    , path
+    , path-io
     , rio >=0.1.12.0
     , statechart-sdk
     , string-interpolate
+    , sydtest
+    , sydtest-discover
     , template-haskell
   default-language: Haskell2010

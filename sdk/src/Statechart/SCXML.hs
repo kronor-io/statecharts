@@ -7,41 +7,22 @@ import RIO.ByteString qualified as BS
 import RIO.ByteString.Lazy qualified as LBS
 import RIO.Text qualified as T
 import Statechart.Types
-import System.Directory (listDirectory, doesDirectoryExist)
-import System.FilePath.Posix (takeExtension)
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
-import Prelude qualified
+import Path
+import Path.IO
 
--- XXX will consume lot of memory if used on large directories
-listDirectoryRecursive :: FilePath -> IO [FilePath]
-listDirectoryRecursive src = go src
-    where
-        go d = do
-            contents <- listDirectory d
-            innerDirs <- filterM (ddeS src) contents
-            res <- go1 innerDirs
-            pure $ contents ++ res
-
-        go1 [] = pure []
-        go1 (d:ds) = do
-            contents <- (\cs -> (\c -> d <> "/" <> c) <$> cs) <$> listDirectory (src <> d)
-            innerDirs <- filterM (ddeS (src <> "/")) contents
-            res <- go1 (innerDirs++ds)
-            pure $ contents ++ res
-        ddeS src c = doesDirectoryExist (src <> c)
-
-readSCXMLfiles :: FilePath -> IO [(FilePath, ByteString, Chart StateName EventName)]
-readSCXMLfiles sourcePath = do
-    xs_ <- filter scxmlFile <$> listDirectoryRecursive sourcePath
-    forM (zip xs_ xs_) $ \(path, _) -> do
-        a <- BS.readFile (sourcePath <> path)
-        case parse $ LBS.fromStrict a of
+readSCXMLfiles :: Path Abs Dir -> IO [(Path Rel File, Chart StateName EventName)]
+readSCXMLfiles sourceDir = do
+    files <- filter scxmlFile . snd <$> listDirRecurRel sourceDir
+    for files $ \file -> do
+        bs <- BS.readFile $ fromAbsFile $ sourceDir </> file
+        case parse $ LBS.fromStrict bs of
             Left e -> error . show $ e
-            Right p -> return (path, a, p)
+            Right c -> return (file, c)
  where
-   scxmlFile a = takeExtension a == ".scxml"
+   scxmlFile a = fileExtension a == Just ".scxml"
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)
