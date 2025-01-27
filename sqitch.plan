@@ -27,3 +27,4 @@ type/fsm_event_payload 2023-07-03T18:55:31Z Jose Lorenzo Rodriguez <lorenzo@kron
 @0.9 2023-07-03T19:01:15Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # version 0.9
 function/handle_machine_events [function/handle_machine_events@0.9] 2023-07-03T19:01:33Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # remove sub transactions
 @1.0 2023-07-03T19:02:14Z Jose Lorenzo Rodriguez <lorenzo@kronor.io> # removed sub transactions in handling code
+function/handle_machine_events [function/handle_machine_events@1.0] 2025-01-27T16:02:08Z iammrinal0 <iammrinal0@mordor> # fix payload in done transitions

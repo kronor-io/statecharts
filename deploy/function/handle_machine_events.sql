@@ -235,13 +235,13 @@ BEGIN;
               ( shard
               , machine_id
               , format('done.state.%s', (state_transition.target_state).id)
-              , '{}'
+              , handled.data
               );
 
             insert into fsm.state_machine_event (shard_id, state_machine_id, name, data)
               select shard as shard_id, machine_id as state_machine_id
                    , format('done.state.%s', f.id)
-                   , '{}' as data
+                   , handled.data as data
               from fsm.get_finalized_parents(
                   shard
                 , machine_id
