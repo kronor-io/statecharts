@@ -1,0 +1,58 @@
+BEGIN;
+  select plan(1);
+
+  \set shard 7000000001
+  \set chart 9000000001
+
+  insert into fsm.statechart (id, name, version) values (:chart,'parallel_search', 1::semver);
+
+    insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
+    (:chart, 'searching', 'Searching', null, true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'search_complete', 'Search Complete', null, false, true, array[('public', 'record_results')]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'google', 'google', 'searching', true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'bing', 'bing', 'searching', true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'googling', 'Googling', 'google', true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'googling_done', '', 'google', false, true, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'binging', 'Binging', 'bing', true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),
+    (:chart, 'binging_done', '', 'bing', false, true, array[]::fsm_callback_name[], array[]::fsm_callback_name[]);
+    insert into fsm.transition (statechart_id, event, source_state, target_state) values
+    (:chart, 'done.state.searching', 'searching', 'search_complete'),
+    (:chart, 'google.done', 'googling', 'googling_done'),
+    (:chart, 'bing.done', 'binging', 'binging_done');
+
+
+
+  create table if not exists public.handle_machine_event_test(
+    foo text
+  );
+
+
+  create or replace function public.record_results(event_payload fsm_event_payload)
+    returns void as
+  $$
+    declare
+      foo_data_ text not null := (event_payload.data)->>'foo';
+    begin
+      insert into public.handle_machine_event_test
+        (foo)
+      values
+        (foo_data_);
+    end
+  $$ language plpgsql;
+
+
+  -- creating a new machine should be a function
+  select id as machine from fsm.create_machine(:shard, :chart) \gset
+  select fsm.start_machine(:shard, :machine);
+
+  -- transition to the search state
+
+  select fsm.notify_state_machine(:shard, :machine, 'google.done', jsonb_build_object('foo', 'bar'));
+
+  select fsm.notify_state_machine(:shard, :machine, 'bing.done', jsonb_build_object('foo', 'bar'));
+
+  select is(count(*), 1::bigint, 'foo should be 1') from public.handle_machine_event_test where foo = 'bar';
+
+  select finish();
+
+rollback;
