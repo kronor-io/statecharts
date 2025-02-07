@@ -7,6 +7,7 @@ module Statechart.CodeGen.SQL (
     generateSQLRevert,
     GenConfig (..),
     gen,
+    updateSqitchPlan,
 ) where
 
 import Data.List qualified as List
@@ -19,6 +20,10 @@ import RIO.ByteString qualified as BS
 import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
+import Data.Time.Clock (getCurrentTime, UTCTime)
+import Data.Time.Format.ISO8601 (formatShow, iso8601Format)
+import System.IO (appendFile)
+import Text.Regex.TDFA
 
 writeSQLs :: Path Abs Dir -> [(Text, Version, Text)] -> IO ()
 writeSQLs targetDir xs =
@@ -52,6 +57,16 @@ generateSQLRevert prefix =
     fmap $ \a ->
         let code = genRevert (GenConfig prefix (mkCfgFile (name a) (version a)) (name a) (version a))
          in (name a, version a, code)
+
+updateSqitchPlan :: FilePath -> [(Chart StateName EventName)] -> IO ()
+updateSqitchPlan planPath xs = do
+    let chartMigrations = fmap (\a -> [i|#{name a}-#{toText (version a)}|]) xs
+    fp <- resolveFile' planPath
+    existingMigrations <- fmap (T.takeWhile (\c -> c /= ' ')) . T.lines <$> readFileUtf8 (fromAbsFile fp)
+    let newChartMigrations = RIO.filter (`notElem` existingMigrations) chartMigrations
+    now <- iso8601 <$> getCurrentTime
+    for_ newChartMigrations $ \newChartMigration -> do
+        appendFile (fromAbsFile fp) [i|#{newChartMigration} #{now} root <root@251348e4b8bc> \# new version of statechart\n|]
 
 -------------
 -- HELPERS --
@@ -205,3 +220,10 @@ head_ :: [a] -> Maybe a
 head_ [] = Nothing
 head_ [x] = Just x
 head_ (x : _xs) = Just x
+
+iso8601 :: UTCTime -> String
+iso8601 t =
+    let withFractionedSeconds = (formatShow iso8601Format t :: String)
+        regex :: String = "(.*)\\.[0-9]*Z"
+        (_, _, _, [withoutFractionsAndZ]) = withFractionedSeconds =~ regex :: (String, String, String, [String])
+    in withoutFractionsAndZ ++ "Z"
