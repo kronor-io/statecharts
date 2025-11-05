@@ -1,19 +1,24 @@
-cabal-version: 1.12
-
--- This file has been generated from package.yaml by hpack version 0.36.0.
---
--- see: https://github.com/sol/hpack
-
+cabal-version: 3.14
 name:           statechart-sdk
 version:        0.1.1.1
 description:    Statechart SDK (Statechart definitions and build tool)
 author:         Kronor.io
 maintainer:     dev@kronor.io
 copyright:      2021 Kronor
-license:        AllRightsReserved
+license:        NONE
 build-type:     Simple
 
+common de
+  default-extensions:
+    LambdaCase
+    DerivingStrategies
+    OverloadedStrings
+    RecordWildCards
+    QuasiQuotes
+    ViewPatterns
+
 library
+  import: de
   exposed-modules:
       Statechart.CodeGen.Haskell
       Statechart.CodeGen.SQL
@@ -25,57 +30,6 @@ library
       Paths_statechart_sdk
   hs-source-dirs:
       src
-  default-extensions:
-      NoImplicitPrelude
-      ApplicativeDo
-      BangPatterns
-      BinaryLiterals
-      BlockArguments
-      ConstraintKinds
-      DataKinds
-      DefaultSignatures
-      DeriveAnyClass
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveTraversable
-      DerivingStrategies
-      DerivingVia
-      DoAndIfThenElse
-      DuplicateRecordFields
-      EmptyDataDecls
-      EmptyDataDeriving
-      ExistentialQuantification
-      FlexibleContexts
-      FlexibleInstances
-      FunctionalDependencies
-      GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
-      KindSignatures
-      LambdaCase
-      MultiParamTypeClasses
-      MultiWayIf
-      NamedFieldPuns
-      NoImplicitPrelude
-      OverloadedStrings
-      PartialTypeSignatures
-      PatternGuards
-      PatternSynonyms
-      PolyKinds
-      RankNTypes
-      RecordWildCards
-      ScopedTypeVariables
-      StandaloneDeriving
-      StrictData
-      TupleSections
-      TypeFamilies
-      TypeApplications
-      TypeSynonymInstances
-      ViewPatterns
-      QuasiQuotes
   ghc-options: -Wall
   build-depends:
       aeson
@@ -92,9 +46,10 @@ library
     , text
     , time
     , xml-conduit
-  default-language: Haskell2010
+  default-language: GHC2021
 
 test-suite statechart-sdk-test
+  import: de
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -107,57 +62,6 @@ test-suite statechart-sdk-test
       Paths_statechart_sdk
   hs-source-dirs:
       test
-  default-extensions:
-      NoImplicitPrelude
-      ApplicativeDo
-      BangPatterns
-      BinaryLiterals
-      BlockArguments
-      ConstraintKinds
-      DataKinds
-      DefaultSignatures
-      DeriveAnyClass
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveTraversable
-      DerivingStrategies
-      DerivingVia
-      DoAndIfThenElse
-      DuplicateRecordFields
-      EmptyDataDecls
-      EmptyDataDeriving
-      ExistentialQuantification
-      FlexibleContexts
-      FlexibleInstances
-      FunctionalDependencies
-      GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
-      KindSignatures
-      LambdaCase
-      MultiParamTypeClasses
-      MultiWayIf
-      NamedFieldPuns
-      NoImplicitPrelude
-      OverloadedStrings
-      PartialTypeSignatures
-      PatternGuards
-      PatternSynonyms
-      PolyKinds
-      RankNTypes
-      RecordWildCards
-      ScopedTypeVariables
-      StandaloneDeriving
-      StrictData
-      TupleSections
-      TypeFamilies
-      TypeApplications
-      TypeSynonymInstances
-      ViewPatterns
-      QuasiQuotes
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.11 && <10
@@ -171,4 +75,20 @@ test-suite statechart-sdk-test
     , sydtest
     , sydtest-discover
     , template-haskell
-  default-language: Haskell2010
+  default-language: GHC2021
+
+executable generate-chart
+  main-is:          GenerateChart.hs
+  ghc-options:      -main-is GenerateChart.main -O2 -threaded -rtsopts
+  hs-source-dirs:   app
+  build-depends:
+      base            >=4.11     && <10
+    , filepath
+    , directory
+    , optparse-applicative
+    , path
+    , path-io
+    , rio             >=0.1.12.0
+    , statechart-sdk  >=0.1.1.1
+    , typed-process
+  default-language: GHC2021

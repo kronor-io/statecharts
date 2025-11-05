@@ -1,6 +1,0 @@
-resolver: lts-21.22
-packages:
-- .
-nix:
-  packages:
-    - zlib
