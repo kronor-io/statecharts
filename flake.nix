@@ -1,8 +1,8 @@
 {
   description = "statecharts";
   nixConfig = {
-    extra-substituters = "https://pranaysashank.cachix.org";
-    extra-trusted-public-keys = "pranaysashank.cachix.org-1:VeqW46y6BVO74w4ViwzeWqSpDqxuWxtC2DO2zoe9rzc=";
+    extra-substituters = "https://kronor-open.cachix.org";
+    extra-trusted-public-keys = "kronor-open.cachix.org-1:D1shHZh5BRkmM8RB9BaEqBURIgD/n5+u8KFXD1+DbF8=";
   };
   inputs = {
     git-hooks.url = "github:cachix/git-hooks.nix";
@@ -76,7 +76,7 @@
 
       statechartProject = pkgs.haskell-nix.project {
         src = ./sdk;
-        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [] else [{
+        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [ ] else [{
           dontPatchELF = false;
           dontStrip = false;
         }]) ++ [{ doHaddock = false; }];

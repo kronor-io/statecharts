@@ -4,10 +4,10 @@ import RIO
 import RIO.List (nub)
 import Statechart.Types
 
-getStateNames :: AsText s => Chart s e -> [StateName]
+getStateNames :: (AsText s) => Chart s e -> [StateName]
 getStateNames = map (unsafeEr . fromText . toText . sid) . getAllChartStates
 
-getEventNames :: AsText e => Chart s e -> [EventName]
+getEventNames :: (AsText e) => Chart s e -> [EventName]
 getEventNames = nub . map (unsafeEr . fromText . toText . event') . getAllChartTransitions
 
 getAllSubStates :: State s e -> [State s e]
@@ -30,7 +30,7 @@ getAllChartTransitions Chart{..} = concatMap getAllTransitions states
 isFinal :: State s e -> Bool
 isFinal = \case Final{} -> True; _ -> False
 
-isInitial :: Eq s => Chart s e -> State s e -> Bool
+isInitial :: (Eq s) => Chart s e -> State s e -> Bool
 isInitial chart state = initial chart == id_ || any aux (states chart)
   where
     id_ = sid state
@@ -43,7 +43,7 @@ isInitial chart state = initial chart == id_ || any aux (states chart)
 -- | Returns all the parent states of a given state with the most inmediate parent
 -- as the first element all the wayt to the root.
 -- Note: assumes the state only exists once inside the chart.
-getParents :: Eq s => Chart s e -> State s e -> [State s e]
+getParents :: (Eq s) => Chart s e -> State s e -> [State s e]
 getParents chart state = case mapMaybe (aux []) (states chart) of
     [] -> error "State not found on chart"
     (x : _) -> x
