@@ -1,3 +1,4 @@
+{- FOURMOLU_DISABLE -}
 {-# LANGUAGE CPP #-}
 
 -- | This module is used to generate Haskell code from a chart.

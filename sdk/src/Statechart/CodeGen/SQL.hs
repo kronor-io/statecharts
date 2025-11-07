@@ -13,6 +13,8 @@ module Statechart.CodeGen.SQL (
 import Data.List qualified as List
 import Data.String.Interpolate (i, iii)
 import Data.Text as T
+import Data.Time.Clock (UTCTime, getCurrentTime)
+import Data.Time.Format.ISO8601 (formatShow, iso8601Format)
 import Path
 import Path.IO
 import RIO
@@ -20,8 +22,6 @@ import RIO.ByteString qualified as BS
 import RIO.Text qualified as T
 import Statechart.Helpers
 import Statechart.Types
-import Data.Time.Clock (getCurrentTime, UTCTime)
-import Data.Time.Format.ISO8601 (formatShow, iso8601Format)
 import System.IO (appendFile)
 import Text.Regex.TDFA
 
@@ -80,11 +80,12 @@ data GenConfig = GenConfig
     , cfgVersion :: Version
     }
 
-versionToSql :: Version  -> Text
+versionToSql :: Version -> Text
 versionToSql (Version (a, b, c)) =
-  if c == 0
-  then [i|#{a}.#{b}::semver|] -- compatibility with existing deploy scripts.
-  else [i|'#{a}.#{b}.#{c}'::semver|]
+    if c == 0
+        then [i|#{a}.#{b}::semver|]
+        -- compatibility with existing deploy scripts.
+        else [i|'#{a}.#{b}.#{c}'::semver|]
 
 -- | So we can generate a verify SQL script from any chart.
 genVerify :: GenConfig -> Text
@@ -179,7 +180,7 @@ stateItemDef c s =
         , {-on_exit-} "array[" <> mconcat (List.intersperse "," . RIO.filter (not . T.null) . fmap cToText . onExit $ s) <> "]::fsm_callback_name[]"
         ]
 
-cToText :: AsText e => Content e -> Text
+cToText :: (AsText e) => Content e -> Text
 cToText = \case
     Script t -> let (a, b) = T.breakOn "." t in tuple [str a, str $ T.drop 1 b]
     Raise e -> toText e
@@ -226,4 +227,4 @@ iso8601 t =
     let withFractionedSeconds = (formatShow iso8601Format t :: String)
         regex :: String = "(.*)\\.[0-9]*Z"
         (_, _, _, [withoutFractionsAndZ]) = withFractionedSeconds =~ regex :: (String, String, String, [String])
-    in withoutFractionsAndZ ++ "Z"
+     in withoutFractionsAndZ ++ "Z"
