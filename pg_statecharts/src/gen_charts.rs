@@ -2,87 +2,13 @@ use pgrx::*;
 
 #[pg_schema]
 mod fsm {
-    use pgrx::datum::PgVarlena;
     use pgrx::*;
     use quick_xml::de::from_str;
-    use serde::{Deserialize, Serialize};
-    use std::collections::HashMap;
+    use serde::{Deserialize};
     use std::ffi::OsStr;
-    use std::fmt;
     use std::fs;
     use std::path::{Path, PathBuf};
     use walkdir::WalkDir;
-
-    /*
-    #[pg_extern]
-    fn test_scxml() -> Result<(), Box<dyn std::error::Error>> {
-        let xml_content = r#"
-    <scxml xmlns="http://www.w3.org/2005/07/scxml"
-                  name="email.email_flow"
-                  version="1.0"
-                  initial="queued">
-
-      <state id="queued" name="QUEUED">
-        <transition event="email.sent" target="sent"/>
-        <transition event="email.dont_send" target="not_sent"/>
-
-        <onentry>
-          <script src="email.materialize_email_status" />
-          <script src="email.enqueue_send_email_job" />
-        </onentry>
-      </state>
-
-      <state id="sent" name="SENT">
-        <transition event="email.received" target="received"/>
-        <transition event="email.bounced" target="bounced"/>
-        <transition event="email.marked_as_spam" target="marked_as_spam"/>
-
-        <onentry>
-          <script src="email.materialize_email_status" />
-          <script src="email.update_email_sent_at" />
-        </onentry>
-      </state>
-
-      <state id="received" name="RECEIVED">
-        <transition event="email.marked_as_spam" target="marked_as_spam"/>
-
-        <onentry>
-          <script src="email.materialize_email_status" />
-        </onentry>
-      </state>
-
-      <final id="not_sent" name="NOT_SENT">
-        <onentry>
-          <script src="email.materialize_email_status" />
-        </onentry>
-      </final>
-
-      <final id="bounced" name="BOUNCED">
-        <onentry>
-          <script src="email.materialize_email_status" />
-        </onentry>
-      </final>
-
-      <final id="marked_as_spam" name="MARKED_AS_SPAM">
-        <onentry>
-          <script src="email.materialize_email_status" />
-        </onentry>
-      </final>
-
-    </scxml>
-    "#;
-
-        let scxml: SCXML = match from_str(&xml_content) {
-            Ok(scxml) => scxml,
-            Err(err) => pgrx::error!("Failed to parse SCXML: {}", err),
-        };
-
-        let migration = generate_sql_migration(&scxml);
-        pgrx::info!("Generated SQL migration:\n{}", migration);
-
-        Ok(())
-    }
-    */
 
     #[pg_extern]
     fn deploy_scxml_files(
@@ -126,7 +52,7 @@ mod fsm {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
 
-        let migrations = scxml_file_paths
+        let _ = scxml_file_paths
             .iter()
             .map(|file_path| {
                 let scxml = read_scxml_file(file_path);
@@ -138,14 +64,7 @@ mod fsm {
             // migrations
             .collect::<Vec<(&PathBuf, SCXML, Migration)>>()
             .iter()
-            .map(|(file_path, scxml, migration)| {
-                let file_dir = if file_path.is_file() {
-                    file_path.parent().unwrap()
-                } else {
-                    file_path
-                };
-
-                // let relative_path = file_dir.strip_prefix(source_path).unwrap();
+            .map(|(_file_path, scxml, migration)| {
                 let migration_path = format!(
                     "statechart/{}-{}.sql",
                     scxml.name.replace(".", "/"),
@@ -224,7 +143,7 @@ mod fsm {
                 .collect()
         } else {
             match fs::read_dir(path) {
-                Err(err) => pgrx::error!("Failed reading directory: {}", source_path),
+                Err(err) => pgrx::error!("Failed reading directory: {}, error: {}", source_path, err),
                 Ok(dir_content) => dir_content
                     .filter_map(|entry| entry.ok().map(|e| e.path()))
                     .filter(|path| !path.is_dir() && path.extension() == Some(OsStr::new("scxml")))
@@ -530,7 +449,7 @@ delete from fsm.state
         fn to_states_and_transitions(
             &self,
             parent_id: Option<String>,
-            parent_initial_id: String,
+            _parent_initial_id: String,
         ) -> SqlStatesAndTransitions {
             let transition = match parent_id {
                 None => pgrx::error!("Can't have transition without parent_id"),
