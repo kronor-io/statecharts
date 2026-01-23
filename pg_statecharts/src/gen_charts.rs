@@ -16,13 +16,18 @@ mod fsm {
         recursive: default!(bool, false),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
+        let placeholder_project = "placeholder_project".to_string();
 
         let migrations = scxml_file_paths
             .iter()
             .map(|file_path| {
                 let scxml = read_scxml_file(file_path);
 
-                generate_sql_migration(&scxml).deploy
+                // removing transaction control with replace is a bit of a hack
+                generate_sql_migration(&scxml, &placeholder_project)
+                    .deploy
+                    .replace("BEGIN;", "")
+                    .replace("COMMIT;", "")
             })
             .collect::<Vec<String>>();
 
@@ -47,16 +52,23 @@ mod fsm {
     #[pg_extern]
     fn gen_statechart_sqitch_migrations(
         source_path: &str,
-        sqitch_dir: &str,
+        sqitch_plan_file_path: &str,
         recursive: default!(bool, false),
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let sqitch_project = match extract_project_from_sqitch_plan(sqitch_plan_file_path) {
+            Ok(sqitch_project) => sqitch_project,
+            Err(err) => pgrx::error!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)
+        };
+
+        let sqitch_dir = Path::new(sqitch_plan_file_path).parent().unwrap();
+
         let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
 
         let _ = scxml_file_paths
             .iter()
             .map(|file_path| {
                 let scxml = read_scxml_file(file_path);
-                let migration = generate_sql_migration(&scxml);
+                let migration = generate_sql_migration(&scxml, &sqitch_project);
 
                 (file_path, scxml, migration)
             })
@@ -71,9 +83,9 @@ mod fsm {
                     scxml.version
                 );
 
-                let deploy_path = Path::new(sqitch_dir).join("deploy").join(&migration_path);
-                let revert_path = Path::new(sqitch_dir).join("revert").join(&migration_path);
-                let verify_path = Path::new(sqitch_dir).join("verify").join(&migration_path);
+                let deploy_path = sqitch_dir.join("deploy").join(&migration_path);
+                let revert_path = sqitch_dir.join("revert").join(&migration_path);
+                let verify_path = sqitch_dir.join("verify").join(&migration_path);
 
                 fs::create_dir_all(&deploy_path.parent().unwrap()).unwrap();
                 fs::create_dir_all(&revert_path.parent().unwrap()).unwrap();
@@ -88,6 +100,21 @@ mod fsm {
             .collect::<Vec<()>>();
 
         Ok(())
+    }
+
+    fn extract_project_from_sqitch_plan<P: AsRef<Path>>(path: P) -> Result<String, String> {
+        let content = match fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(err) => return Err(format!("Couldn't read sqitch plan file. Error: {}", err))
+        };
+
+        for line in content.lines() {
+            if line.starts_with("%project=") {
+                return Ok(line.trim_start_matches("%project=").trim().to_string());
+            }
+        }
+
+        Err("Couldn't find %project property in sqitch plan file".to_string())
     }
 
     fn read_scxml_file(file_path: &PathBuf) -> SCXML {
@@ -162,7 +189,7 @@ mod fsm {
         verify: String,
     }
 
-    fn generate_sql_migration(scxml: &SCXML) -> Migration {
+    fn generate_sql_migration(scxml: &SCXML, project: &String) -> Migration {
         let deploy = {
             let states_and_transitions = {
                 let states = scxml
@@ -204,6 +231,11 @@ mod fsm {
 
             format!(
                 r#"
+        -- Deploy {}:statechart/{}-{} to pg
+
+        -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+
+        BEGIN;
         do $$
         declare
         chart bigint;
@@ -215,26 +247,46 @@ mod fsm {
         {};
         end
         $$;
+        COMMIT;
         "#,
-                scxml.name, scxml.version, state_rows, transition_rows
+                project, scxml.name, scxml.version, scxml.name, scxml.version, state_rows, transition_rows
             )
         };
 
         let revert = format!(
             r#"
-with chart as (
-    delete from fsm.statechart
-    where name = '{}'
-    and version = {}::semver
-    returning id
-)
-delete from fsm.state
-    where statechart_id = (select id from chart);
-"#,
-            scxml.name, scxml.version
+            -- Revert {}:statechart/{}-{} to pg
+
+            -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+
+
+            BEGIN;
+
+            with chart as (
+                delete from fsm.statechart
+                where name = '{}'
+                and version = {}::semver
+                returning id
+            )
+            delete from fsm.state
+                where statechart_id = (select id from chart);
+
+            COMMIT;
+            "#,
+            project, scxml.name, scxml.version, scxml.name, scxml.version
         );
 
-        let verify = "".to_string();
+        let verify = format!(
+            r#"
+            -- Verify {}:statechart/{}-{} to pg
+
+            -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+
+            BEGIN;
+            ROLLBACK;
+            "#,
+            project, scxml.name, scxml.version
+        );
 
         return Migration {
             deploy,
