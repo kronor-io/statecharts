@@ -12,6 +12,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
     hackage-nix.url = "github:kronor-io/hackage.nix";
     hackage-nix.flake = false;
+    rust-overlay.url = "github:oxalica/rust-overlay"; # Add this
   };
   outputs =
     { self
@@ -19,6 +20,7 @@
     , haskell-nix
     , hackage-nix
     , nixpkgs
+    , rust-overlay  # Add this
     }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
@@ -61,22 +63,73 @@
         };
       };
 
-      pkgs = import nixpkgs (
-        {
-          inherit system;
-          overlays = [ haskellNix.overlay ];
-        }
-      );
-      pristinePkgs = import nixpkgs (
-        {
-          inherit system;
-        }
-      );
+      overlays = [
+        haskellNix.overlay
+        rust-overlay.overlays.default # Add rust overlay
+      ];
+
+      pkgs = import nixpkgs ({
+        inherit system;
+        overlays = overlays;
+      });
+
+      pristinePkgs = import nixpkgs ({
+        inherit system;
+      });
+
       compiler-nix-name = "ghc9122";
+
+      # Define Rust version here
+      rustVersion = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default);
+      # OR use a stable version:
+      # rustVersion = pkgs.rust-bin.stable."1.85.0".default;
+      # OR latest stable:
+      # rustVersion = pkgs.rust-bin.stable.latest.default;
+
+      # PostgreSQL dependencies for pgrx
+      postgresqlPkgs = with pkgs; [
+        # PostgreSQL development headers - REQUIRED for pgrx
+        postgresql_16
+        postgresql.lib # libpq development library
+
+        # Build tools for pgrx
+        clang # Required by pgrx for compilation
+        llvmPackages.libclang # More clang libraries
+        pkg-config # For finding PostgreSQL libraries
+
+        # General build essentials
+        gcc
+        gnumake
+        binutils
+
+        # OpenSSL development packages
+        openssl # The OpenSSL library
+        openssl.dev # Development headers and .pc files
+
+        # Readline for PostgreSQL compilation
+        readline
+        readline.dev
+
+        # ICU library for Unicode suppor
+        icu
+        icu.dev
+
+        # Other PostgreSQL build dependencies
+        bison # Parser generator
+        flex # Lexical analyzer
+        zlib # Compression library
+        zlib.dev
+
+        # Optional but useful for development
+        lld # Faster linker (optional)
+
+        # Rust toolchain - use the version we defined above
+        rustVersion
+      ];
 
       statechartProject = pkgs.haskell-nix.project {
         src = ./sdk;
-        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [] else [{
+        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [ ] else [{
           dontPatchELF = false;
           dontStrip = false;
         }]) ++ [{ doHaddock = false; }];
@@ -87,11 +140,20 @@
       };
 
       shell = statechartProject.shellFor {
-
         withHoogle = false;
+
+        nativeBuildInputs = postgresqlPkgs;
 
         shellHook = ''
           ${self.checks.${system}.pre-commit-check.shellHook}
+
+          # Set PostgreSQL paths for pgrx
+          export PG_CONFIG="${pkgs.postgresql_16}/bin/pg_config"
+          export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
+          
+          # Verify Rust version
+          echo "Rust version: $(rustc --version)"
+          echo "Cargo version: $(cargo --version)"
         '';
       };
 

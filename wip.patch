@@ -1,0 +1,1995 @@
+diff --git a/flake.lock b/flake.lock
+index a5e7ff5..cd4c8b9 100644
+--- a/flake.lock
++++ b/flake.lock
+@@ -182,12 +182,47 @@
+         "type": "github"
+       }
+     },
++    "nixpkgs_3": {
++      "locked": {
++        "lastModified": 1744536153,
++        "narHash": "sha256-awS2zRgF4uTwrOKwwiJcByDzDOdo3Q1rPZbiHQg/N38=",
++        "owner": "NixOS",
++        "repo": "nixpkgs",
++        "rev": "18dd725c29603f582cf1900e0d25f9f1063dbf11",
++        "type": "github"
++      },
++      "original": {
++        "owner": "NixOS",
++        "ref": "nixpkgs-unstable",
++        "repo": "nixpkgs",
++        "type": "github"
++      }
++    },
+     "root": {
+       "inputs": {
+         "git-hooks": "git-hooks",
+         "hackage-nix": "hackage-nix",
+         "haskell-nix": "haskell-nix",
+-        "nixpkgs": "nixpkgs_2"
++        "nixpkgs": "nixpkgs_2",
++        "rust-overlay": "rust-overlay"
++      }
++    },
++    "rust-overlay": {
++      "inputs": {
++        "nixpkgs": "nixpkgs_3"
++      },
++      "locked": {
++        "lastModified": 1767840362,
++        "narHash": "sha256-ZtsFqUhilubohNZ1TgpQIFsi4biZTwRH9rjZsDRDik8=",
++        "owner": "oxalica",
++        "repo": "rust-overlay",
++        "rev": "d159ea1fc321c60f88a616ac28bab660092a227d",
++        "type": "github"
++      },
++      "original": {
++        "owner": "oxalica",
++        "repo": "rust-overlay",
++        "type": "github"
+       }
+     }
+   },
+diff --git a/flake.nix b/flake.nix
+index e6cee9e..4fb59da 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -12,6 +12,7 @@
+     nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
+     hackage-nix.url = "github:kronor-io/hackage.nix";
+     hackage-nix.flake = false;
++    rust-overlay.url = "github:oxalica/rust-overlay"; # Add this
+   };
+   outputs =
+     { self
+@@ -19,6 +20,7 @@
+     , haskell-nix
+     , hackage-nix
+     , nixpkgs
++    , rust-overlay  # Add this
+     }:
+     let
+       supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
+@@ -61,22 +63,73 @@
+         };
+       };
+ 
+-      pkgs = import nixpkgs (
+-        {
+-          inherit system;
+-          overlays = [ haskellNix.overlay ];
+-        }
+-      );
+-      pristinePkgs = import nixpkgs (
+-        {
+-          inherit system;
+-        }
+-      );
++      overlays = [
++        haskellNix.overlay
++        rust-overlay.overlays.default # Add rust overlay
++      ];
++
++      pkgs = import nixpkgs ({
++        inherit system;
++        overlays = overlays;
++      });
++
++      pristinePkgs = import nixpkgs ({
++        inherit system;
++      });
++
+       compiler-nix-name = "ghc9122";
+ 
++      # Define Rust version here
++      rustVersion = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default);
++      # OR use a stable version:
++      # rustVersion = pkgs.rust-bin.stable."1.85.0".default;
++      # OR latest stable:
++      # rustVersion = pkgs.rust-bin.stable.latest.default;
++
++      # PostgreSQL dependencies for pgrx
++      postgresqlPkgs = with pkgs; [
++        # PostgreSQL development headers - REQUIRED for pgrx
++        postgresql_16
++        postgresql.lib # libpq development library
++
++        # Build tools for pgrx
++        clang # Required by pgrx for compilation
++        llvmPackages.libclang # More clang libraries
++        pkg-config # For finding PostgreSQL libraries
++
++        # General build essentials
++        gcc
++        gnumake
++        binutils
++
++        # OpenSSL development packages
++        openssl # The OpenSSL library
++        openssl.dev # Development headers and .pc files
++
++        # Readline for PostgreSQL compilation
++        readline
++        readline.dev
++
++        # ICU library for Unicode suppor
++        icu
++        icu.dev
++
++        # Other PostgreSQL build dependencies
++        bison # Parser generator
++        flex # Lexical analyzer
++        zlib # Compression library
++        zlib.dev
++
++        # Optional but useful for development
++        lld # Faster linker (optional)
++
++        # Rust toolchain - use the version we defined above
++        rustVersion
++      ];
++
+       statechartProject = pkgs.haskell-nix.project {
+         src = ./sdk;
+-        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [] else [{
++        modules = (if system == "x86_64-darwin" || system == "aarch64-darwin" then [ ] else [{
+           dontPatchELF = false;
+           dontStrip = false;
+         }]) ++ [{ doHaddock = false; }];
+@@ -87,11 +140,20 @@
+       };
+ 
+       shell = statechartProject.shellFor {
+-
+         withHoogle = false;
+ 
++        nativeBuildInputs = postgresqlPkgs;
++
+         shellHook = ''
+           ${self.checks.${system}.pre-commit-check.shellHook}
++
++          # Set PostgreSQL paths for pgrx
++          export PG_CONFIG="${pkgs.postgresql_16}/bin/pg_config"
++          export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
++          
++          # Verify Rust version
++          echo "Rust version: $(rustc --version)"
++          echo "Cargo version: $(cargo --version)"
+         '';
+       };
+ 
+diff --git a/pg_statecharts/.cargo/config.toml b/pg_statecharts/.cargo/config.toml
+new file mode 100644
+index 0000000..13c456b
+--- /dev/null
++++ b/pg_statecharts/.cargo/config.toml
+@@ -0,0 +1,3 @@
++[target.'cfg(target_os="macos")']
++# Postgres symbols won't be available until runtime
++rustflags = ["-Clink-arg=-Wl,-undefined,dynamic_lookup"]
+diff --git a/pg_statecharts/.gitignore b/pg_statecharts/.gitignore
+new file mode 100644
+index 0000000..abf56f2
+--- /dev/null
++++ b/pg_statecharts/.gitignore
+@@ -0,0 +1,9 @@
++.DS_Store
++.idea/
++/target
++*.iml
++**/*.rs.bk
++Cargo.lock
++tests/pg_regress/results
++tests/pg_regress/regression.diffs
++tests/pg_regress/regression.out
+diff --git a/pg_statecharts/Cargo.toml b/pg_statecharts/Cargo.toml
+new file mode 100644
+index 0000000..0beccbc
+--- /dev/null
++++ b/pg_statecharts/Cargo.toml
+@@ -0,0 +1,37 @@
++[package]
++name = "pg_statecharts"
++version = "0.1.0"
++edition = "2021"
++
++[lib]
++name = "pg_statecharts"
++crate-type = ["cdylib", "lib"]
++
++[[bin]]
++name = "pgrx_embed_pg_statecharts"
++path = "./src/bin/pgrx_embed.rs"
++
++[features]
++default = ["pg16"]
++pg16 = ["pgrx/pg16", "pgrx-tests/pg16" ]
++pg17 = ["pgrx/pg17", "pgrx-tests/pg17" ]
++pg18 = ["pgrx/pg18", "pgrx-tests/pg18" ]
++pg_test = []
++
++[dependencies]
++pgrx = { version = "=0.16.1", features = ["pg16"] }
++serde = { version = "1.0", features = ["derive"] }
++quick-xml = { version = "0.39", features = ["serialize"] }
++walkdir = "2"
++
++[dev-dependencies]
++pgrx-tests = "=0.16.1"
++
++[profile.dev]
++panic = "unwind"
++
++[profile.release]
++panic = "unwind"
++opt-level = 3
++lto = "fat"
++codegen-units = 1
+diff --git a/pg_statecharts/pg_statecharts.control b/pg_statecharts/pg_statecharts.control
+new file mode 100644
+index 0000000..6d61a9d
+--- /dev/null
++++ b/pg_statecharts/pg_statecharts.control
+@@ -0,0 +1,8 @@
++comment = 'pg_statecharts:  Created by pgrx'
++default_version = '0.1.0'
++module_pathname = 'pg_statecharts'
++relocatable = false
++superuser = true
++trusted = false
++# requires = 'ltree, semver'
++requires = 'ltree'
+diff --git a/pg_statecharts/sql/pg_statecharts--0.1.0--semver.sql b/pg_statecharts/sql/pg_statecharts--0.1.0--semver.sql
+new file mode 100644
+index 0000000..1a8c41a
+--- /dev/null
++++ b/pg_statecharts/sql/pg_statecharts--0.1.0--semver.sql
+@@ -0,0 +1,91 @@
++--
++-- comparison operators for semver type
++--
++
++create operator < (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_lt,
++    commutator = >,
++    negator = >=,
++    restrict = scalarltsel,
++    join = scalarltjoinsel
++);
++
++create operator <= (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_le,
++    commutator = >=,
++    negator = >,
++    restrict = scalarltsel,
++    join = scalarltjoinsel
++);
++
++create operator = (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_eq,
++    commutator = =,
++    negator = <>,
++    restrict = eqsel,
++    join = eqjoinsel
++);
++
++create operator <> (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_ne,
++    commutator = <>,
++    negator = =,
++    restrict = neqsel,
++    join = neqjoinsel
++);
++
++create operator >= (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_ge,
++    commutator = <=,
++    negator = <,
++    restrict = scalarltsel,
++    join = scalarltjoinsel
++);
++
++create operator > (
++    leftarg = semver,
++    rightarg = semver,
++    procedure = semver_gt,
++    commutator = <,
++    negator = <=,
++    restrict = scalarltsel,
++    join = scalarltjoinsel
++);
++
++--
++-- the btree indexing operator class.
++--
++
++create operator class semver_ops
++    default for type semver using btree as
++    operator    1   <  (semver, semver),
++    operator    2   <= (semver, semver),
++    operator    3   =  (semver, semver),
++    operator    4   >= (semver, semver),
++    operator    5   >  (semver, semver),
++    function    1   semver_cmp(semver, semver);
++
++--
++-- the hash indexing operator class.
++-- note: you cannot have two operator classes with the same name!
++-- use a different name for hash operator class
++--
++
++create operator class semver_hash_ops
++    default for type semver using hash as
++    operator    1   =  (semver, semver),
++    function    1   hash_semver(semver);
++
++create cast (text as semver)
++with function semver_from_text(text)
++as implicit;
+diff --git a/pg_statecharts/sql/pg_statecharts--0.1.0--tables.sql b/pg_statecharts/sql/pg_statecharts--0.1.0--tables.sql
+new file mode 100644
+index 0000000..415ad7e
+--- /dev/null
++++ b/pg_statecharts/sql/pg_statecharts--0.1.0--tables.sql
+@@ -0,0 +1,716 @@
++
++-- set client_min_messages to warning;
++--   create extension if not exists ltree;
++-- reset client_min_messages;
++
++create schema fsm;
++comment on schema fsm is 'Schema containing the statecharts implementation.';
++
++-- statechart tables
++create table fsm.statechart (
++  id bigint not null generated by default as identity ( start with 1 cache 32767 ) primary key,
++  created_at timestamptz not null default now(),
++  name text not null,
++  version semver not null,
++
++  constraint name_must_be_within_bounds
++    check (char_length(name) >= 1 and char_length(name) <= 200)
++);
++
++create unique index idx_unique_name_version on fsm.statechart(name, version);
++
++comment on table fsm.statechart is 'All the different statecharts and their versions.';
++
++create type fsm_callback_name as (
++  schema_name name,
++  function_name name
++);
++
++comment on type fsm_callback_name is
++    'Type for on_entry and on_exit callbacks. Should contain both the schema and the function name to invoke';
++
++create table fsm.state (
++  statechart_id bigint not null,
++  is_initial bool not null,
++  is_final bool not null,
++  id text not null,
++  name text not null,
++  parent_path ltree not null,
++  node_path ltree not null,
++  parent_id text,
++  on_entry fsm_callback_name[] not null default array[]::fsm_callback_name[],
++  on_exit fsm_callback_name[] not null default array[]::fsm_callback_name[],
++  primary key (statechart_id, id),
++
++  constraint id_must_be_within_bounds
++    check (char_length(id) >= 1 and char_length(id) <= 50),
++
++  constraint id_must_be_alphanumeric
++    check (id ~ '^[a-zA-Z0-9_]+$'),
++
++  constraint cannot_be_both_initial_and_final
++    check (not (is_initial and is_final)),
++
++  constraint fk_statechart
++    foreign key(statechart_id)
++    references fsm.statechart(id)
++    on delete cascade,
++
++  constraint fk_parent_state
++    foreign key(statechart_id, parent_id)
++    references fsm.state(statechart_id, id)
++    on delete cascade
++);
++
++create index idx_parent on fsm.state(statechart_id, parent_id);
++create index idx_parent_path on fsm.state using gist (parent_path) include (statechart_id);
++create index idx_node_path on fsm.state using gist (node_path) include (statechart_id);
++
++-- https://statecharts.dev/glossary/state.html
++comment on table fsm.state is $comment$
++    A state in a state machine describes a particular behaviour of the machine.
++    When we say that a machine is “in” a state, it means that the machine behaves
++    in the way that state describes.
++
++    The behaviour of a state is defined as how the state reacts to events.
++    Each state can specify a number of events that it “understands”, and specifies,
++    for each event, any number of transitions that could be taken, if that event happens.
++    A state also describes a set of actions to execute when the state is entered or
++    exited, and in some implementations, activities that should be happening for the
++    entire duration of time that the machine is in the state.
++
++    When a state machine is executed, it enters the initial state, and adopts the
++    behaviour associated with that state.  As the machine handles events, it
++    transitions to other states, thus changing the behaviour of the machine over time.
++$comment$;
++
++-- https://statecharts.dev/glossary/initial-state.html
++comment on column fsm.state.is_initial is $comment$
++    The initial state in the state machine. There can only be one initial state
++    in a state machine, but there can be many for parallel states.
++
++    When a state machine starts, it starts by entering the machine’s initial state.
++    Likewise, when a compound state is entered, its initial state is also entered.
++    The initial state is not a separate state, but more like an indication of which
++    state that the machine should start in by default.
++
++    An initial state should be thought of as the default starting point of a compound state
++    if a transition points directly to the compound state.
++$comment$;
++
++-- https://statecharts.dev/glossary/final-state.html
++comment on column fsm.state.is_final is $comment$
++    The final state in the state machine. There cannot be any transitions from
++    the final state.
++
++    A final state is a state in a compound state that designates that the compound
++    state in question has completed, i.e. will not process any further events.
++    Reaching a final state will generate an internal event, which in turn can allow
++    other parts of the state machine to react to the fact that the compound state has
++    “completed”.
++$comment$;
++
++comment on column fsm.state.parent_path is $comment$
++    Parent path of the state. This is used to represent that a state is a
++    child state, or part of a parallel state.
++
++    This column is automatically set based on the "parent_id" column.
++$comment$;
++
++comment on column fsm.state.node_path is $comment$
++    Path of the state that is represented from the root of the tree.
++
++    This column is automatically set based on the "parent_id" column.
++$comment$;
++
++comment on column fsm.state.parent_id is $comment$
++    Id of the parent state.
++    NULL means that the state has no parent, i.e. it is not part of a composite
++    nor parallel state.
++$comment$;
++
++comment on column fsm.state.on_entry is $comment$
++    The functions to execute when this state is entered.
++$comment$;
++
++comment on column fsm.state.on_exit is $comment$
++    The functions to execute when the state is exited.
++$comment$;
++
++
++-- transition table 
++create table fsm.transition (
++  statechart_id bigint not null,
++  event text not null,
++  source_state text not null,
++  target_state text not null,
++  primary key (statechart_id, event, source_state),
++
++  constraint event_must_be_within_bounds
++    check (char_length(event) >= 1 and char_length(event) <= 100),
++
++  constraint fk_source_state
++    foreign key(statechart_id, source_state)
++    references fsm.state(statechart_id, id)
++    on delete cascade,
++
++  constraint fk_target_state
++    foreign key(statechart_id, target_state)
++    references fsm.state(statechart_id, id)
++    on delete cascade
++);
++
++-- https://statecharts.dev/glossary/transition.html
++comment on table fsm.transition is $comment$
++    In an executing state machine, a transition is the instantaneous transfer
++    from one state to another.  In a state machine, a transition tells us
++    what happens when an event occurs.
++
++    When an event happens, the currently active state(s) are inspected,
++    looking for an outbound transition that could be triggered by the event.
++$comment$;
++
++comment on column fsm.transition.event is 'Name of the transition event.';
++
++comment on column fsm.transition.source_state is 'The from state of the transition.';
++
++comment on column fsm.transition.target_state is 'The to state of the transition.';
++
++-- check_no_cross_boundary_transition trigger
++create or replace function fsm.trig_check_no_cross_boundary_transition() returns trigger as
++$$
++  declare
++      bad_transitions jsonb;
++  begin
++    select jsonb_agg(c.*) into bad_transitions
++    -- changed is the table of changes that where just modified
++    from changed c
++    join fsm.state source
++      on  source.statechart_id = c.statechart_id
++      and source.id = c.source_state
++    join fsm.state target
++      on  target.statechart_id = c.statechart_id
++      and target.id = c.target_state
++    where source.parent_id <> target.parent_id;
++
++    if jsonb_array_length(bad_transitions) > 0
++    then
++      raise exception 'cannot add transitions between states with different parents: %', jsonb_pretty(bad_transitions);
++    end if;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++comment on function fsm.trig_check_no_cross_boundary_transition is $comment$
++    This function checks that there are no transitions between states with
++    different parents in the "fsm.transition" table.
++$comment$;
++
++set client_min_messages TO warning;
++drop trigger if exists check_no_cross_boundary_transitions_insert on fsm.transition;
++drop trigger if exists check_no_cross_boundary_transitions_update on fsm.transition;
++reset client_min_messages;
++
++create trigger check_no_cross_boundary_transitions_insert
++after insert
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_cross_boundary_transition();
++
++comment on trigger check_no_cross_boundary_transitions_insert on fsm.transition is $comment$
++    Checks that no transitions in between states with different parents are
++    inserted in the "fsm.transition" table.
++$comment$;
++
++create trigger check_no_cross_boundary_transitions_update
++after update
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_cross_boundary_transition();
++
++comment on trigger check_no_cross_boundary_transitions_update on fsm.transition is $comment$
++    Checks that no transitions in between states with different parents are
++    inserted in the "fsm.transition" table.
++$comment$;
++
++-- check_no_duplicate_event_handler trigger
++create or replace function fsm.trig_check_no_duplicate_event_handler() returns trigger as
++$$
++  declare
++      duplicate_transitions jsonb;
++  begin
++    with changed_event as (
++      select distinct statechart_id, event
++      from changed
++    )
++    -- look at the entire tree to see if the same event name is used
++    -- for a transition
++    select jsonb_agg(t.*) into duplicate_transitions
++    from fsm.transition t
++    -- need to get the source state info for the transition
++    -- specifically, we need to get its node_path
++    join fsm.state s
++      on  s.statechart_id = t.statechart_id
++      and s.id = t.source_state
++    -- get all children and parents on the source_state by using the node_path
++    -- it is the count of this children nodes that will determine
++    -- if the same event is used in another transition
++    join fsm.state relative
++      on  relative.statechart_id = t.statechart_id
++      and (relative.node_path <@ s.node_path or relative.node_path @> s.node_path)
++      and relative.id <> s.id
++    join fsm.transition ct
++      on  ct.statechart_id = relative.statechart_id
++      and ct.source_state = relative.id
++    join changed_event ce
++      on  ce.statechart_id = ct.statechart_id
++      and ce.event = ct.event
++      and ce.statechart_id = t.statechart_id
++      and ce.event = t.event;
++
++    if jsonb_array_length(duplicate_transitions) > 0
++    then
++      raise exception $m$
++      Cannot use the same event name for multiple transations in the same tree: %
++      $m$, jsonb_pretty(duplicate_transitions);
++    end if;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++set client_min_messages TO warning;
++drop trigger if exists check_no_duplicate_event_handler_insert on fsm.transition;
++drop trigger if exists check_no_duplicate_event_handler_update on fsm.transition;
++reset client_min_messages;
++
++create trigger check_no_duplicate_event_handler_insert
++after insert
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_duplicate_event_handler();
++
++create trigger check_no_duplicate_event_handler_update
++after update
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_duplicate_event_handler();
++
++-- check_no_transition_for_final trigger
++create or replace function fsm.trig_check_no_transition_for_final() returns trigger as
++$$
++  declare
++      bad_transitions jsonb;
++  begin
++    select jsonb_agg(c.*) into bad_transitions
++    from changed c
++    join fsm.state s
++      on  s.statechart_id = c.statechart_id
++      and s.id = c.source_state
++      and s.is_final;
++
++    if jsonb_array_length(bad_transitions)
++    then
++      raise exception 'cannot add transitions from final states: %', jsonb_pretty(bad_transitions);
++    end if;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++comment on function fsm.trig_check_no_transition_for_final is $comment$
++    Checks that there are no transitions added from final states.
++$comment$;
++
++-- create a similar function for states
++create or replace function fsm.trig_check_no_final_state_with_transition() returns trigger as
++$$
++  declare
++      bad_states jsonb;
++  begin
++    select jsonb_agg(c.*) into bad_states
++    from changed c
++    join fsm.transition t
++      on  t.statechart_id = c.statechart_id
++      and t.source_state = c.id
++    where c.is_final;
++
++    if jsonb_array_length(bad_states)
++    then
++      raise exception 'cannot add states with transitions from final states: %', jsonb_pretty(bad_states);
++    end if;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++comment on function fsm.trig_check_no_final_state_with_transition is $comment$
++    Checks that there are no states added which have transitions from final states.
++$comment$;
++
++set client_min_messages TO warning;
++drop trigger if exists check_no_transition_for_final_insert on fsm.transition;
++drop trigger if exists check_no_transition_for_final_update on fsm.transition;
++drop trigger if exists check_no_transition_for_final_update on fsm.state;
++reset client_min_messages;
++
++create trigger check_no_transition_for_final_insert
++after insert
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_transition_for_final();
++
++comment on trigger check_no_transition_for_final_insert on fsm.transition is $comment$
++    Checks that there are no transitions inserted from final states.
++$comment$;
++
++create trigger check_no_transition_for_final_update
++after update
++on fsm.transition
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_transition_for_final();
++
++comment on trigger check_no_transition_for_final_update on fsm.transition is $comment$
++    Checks that there are no transitions added from final states.
++$comment$;
++
++create trigger check_no_transition_for_final_update
++after update
++on fsm.state
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_final_state_with_transition();
++
++comment on trigger check_no_transition_for_final_update on fsm.transition is $comment$
++    Checks that there are no states inserted with transitions from final states.
++$comment$;
++
++-- state machine tables
++create table fsm.state_machine (
++  shard_id bigint not null,
++  id bigint not null generated by default as identity ( start with 1 cache 32767 ),
++  statechart_id bigint not null,
++  created_at timestamptz not null default now(),
++
++  primary key (shard_id, id),
++
++  constraint fk_statechart
++    foreign key(statechart_id)
++    references fsm.statechart(id)
++    on delete cascade
++);
++
++create index idx_statechart on fsm.state_machine(statechart_id);
++
++comment on table fsm.state_machine is
++    'Runtime information of a statechart. Contains state machine instances that have started.';
++
++create table fsm.state_machine_state (
++  shard_id bigint not null,
++  state_machine_id bigint not null,
++  statechart_id bigint not null,
++  entered_at timestamptz not null default now(),
++  exited_at timestamptz,
++  state_id text not null,
++
++  constraint entered_should_be_before_exited
++    check (entered_at <= exited_at),
++
++  constraint fk_state_machine
++    foreign key(shard_id, state_machine_id)
++    references fsm.state_machine(shard_id, id)
++    on delete cascade,
++
++  constraint fk_state
++    foreign key(statechart_id, state_id)
++    references fsm.state(statechart_id, id)
++    on delete cascade
++);
++
++create unique index idx_state on fsm.state_machine_state(shard_id, state_machine_id, state_id)
++  where exited_at is null;
++
++comment on table fsm.state_machine_state is $comment$
++  Contains a log of the states that have been activated by a given state machine and
++  is used to determine which states are currently active.
++$comment$;
++
++comment on column fsm.state_machine_state.entered_at is $comment$
++    The timestamp when the state machine has transitioned to this state.
++    This is the column that indicates that a state is currently active
++    for a state machine.
++    Should be before exited_at.
++$comment$;
++
++comment on column fsm.state_machine_state.exited_at is $comment$
++    The timestamp when the state machine has transitioned away from this state.
++    Should be after entered_at.
++$comment$;
++
++create table fsm.state_machine_event (
++  shard_id bigint not null,
++  id bigint not null generated by default as identity ( start with 1 cache 32767 ),
++  state_machine_id bigint not null,
++  created_at timestamptz not null default now(),
++  handled_at timestamptz,
++  name text not null,
++  data jsonb not null,
++
++  primary key (shard_id, id),
++
++  constraint created_should_be_before_handled
++    check (created_at <= handled_at),
++
++  constraint fk_state_machine
++    foreign key(shard_id, state_machine_id)
++    references fsm.state_machine(shard_id, id)
++    on delete cascade
++);
++
++create index idx_state_machine on fsm.state_machine_event(shard_id, state_machine_id)
++  where handled_at is null;
++
++comment on table fsm.state_machine_event is
++    'Queue of events that need to be processed for the state machine.';
++
++comment on column fsm.state_machine_event.created_at is $comment$
++    The timestamp when this event was created. The timestamp should be
++    before "handled_at".
++$comment$;
++
++comment on column fsm.state_machine_event.handled_at is $comment$
++    The timestamp when this event was handled. The timestamp should be
++    after "created_at".
++$comment$;
++
++comment on column fsm.state_machine_event.data is $comment$
++     The data to be sent to the callback handlers in on_entry, on_exit.
++$comment$;
++
++-- check_no_state_loops_trigger
++create or replace function fsm.trig_check_no_state_loops()
++returns trigger as
++$$
++declare the_cycle text[];
++begin
++
++  with recursive chart as (
++    select distinct statechart_id
++    from changed
++  )
++  , prev as (
++    select cs.statechart_id, cs.id, array[id] as seen, false as cycle
++    from fsm.state cs
++    join chart
++      on  chart.statechart_id = cs.statechart_id
++    where parent_id is null
++
++    union all
++
++    select cs.statechart_id, cs.id, seen || cs.id as seen,
++        cs.id = any(seen) as cycle
++    from prev
++    join fsm.state cs
++      on  cs.statechart_id = prev.statechart_id
++      and cs.parent_id = prev.id
++      and prev.cycle = false
++    join chart
++      on  chart.statechart_id = cs.statechart_id
++  )
++  select seen into the_cycle
++  from prev
++  where prev.cycle
++  limit 1;
++
++  if the_cycle is not null
++  then
++    raise exception 'compound states should form a directed graph. Cycle detected: %', the_cycle;
++  end if;
++
++  return null;
++end;
++$$ language plpgsql;
++
++comment on function fsm.trig_check_no_state_loops is $comment$
++    Checks that the compound states do not form a cycle. Compound states
++    should form a directed graph.
++$comment$;
++
++set client_min_messages TO warning;
++drop trigger if exists check_no_state_loops_insert on fsm.state;
++drop trigger if exists check_no_state_loops_update on fsm.state;
++reset client_min_messages;
++
++create trigger check_no_state_loops_insert
++after insert
++on fsm.state
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_state_loops();
++
++comment on trigger check_no_state_loops_insert on fsm.state is $comment$
++    Checks that the compound states do not form a cycle. Compound states
++    should form a directed graph.
++$comment$;
++
++create trigger check_no_state_loops_update
++after update
++on fsm.state
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_no_state_loops();
++
++comment on trigger check_no_state_loops_update on fsm.state is $comment$
++    Checks that the compound states do not form a cycle. Compound states
++    should form a directed graph.
++$comment$;
++
++-- check_valid_initial_state trigger
++create or replace function fsm.trig_check_valid_initial_state() returns trigger as
++$$
++  declare
++      chart bigint;
++      total_initial bigint;
++  begin
++    for chart in
++      select distinct statechart_id
++      from changed
++      where exists (select 1 from fsm.statechart where id = changed.statechart_id)
++    loop
++        select count(*) into total_initial
++        from fsm.state
++        where statechart_id = chart
++          and is_initial
++          and parent_id is null;
++
++        if total_initial is distinct from 1
++        then
++          raise exception 'exactly one initial state is required per statechart';
++        end if;
++
++    end loop;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++comment on function fsm.trig_check_valid_initial_state is $comment$
++    Checks that there is only initial state per statechart. Only considers
++    initial states whose parent_id is null.
++$comment$;
++
++set client_min_messages TO warning;
++drop trigger if exists check_valid_initial_state_insert on fsm.state;
++drop trigger if exists check_valid_initial_state_update on fsm.state;
++drop trigger if exists check_valid_initial_state_delete on fsm.state;
++reset client_min_messages;
++
++create trigger check_valid_initial_state_insert
++after insert
++on fsm.state
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_valid_initial_state();
++
++comment on trigger check_valid_initial_state_insert on fsm.state is $comment$
++    Checks that there is only initial state per statechart. Only considers
++    initial states whose parent_id is null.
++$comment$;
++
++create trigger check_valid_initial_state_update
++after update
++on fsm.state
++referencing new table as changed
++for each statement
++execute function fsm.trig_check_valid_initial_state();
++
++comment on trigger check_valid_initial_state_update on fsm.state is $comment$
++    Checks that there is only initial state per statechart. Only considers
++    initial states whose parent_id is null.
++$comment$;
++
++create trigger check_valid_initial_state_delete
++after delete
++on fsm.state
++referencing old table as changed
++for each statement
++execute function fsm.trig_check_valid_initial_state();
++
++comment on trigger check_valid_initial_state_delete on fsm.state is $comment$
++    Checks that there is only initial state per statechart. Only considers
++    initial states whose parent_id is null.
++$comment$;
++-- notify_machine_event trigger
++create or replace function fsm.trig_notify_machine_event() returns trigger as
++$$
++  declare
++    event record;
++  begin
++
++    for event in select distinct shard_id, state_machine_id from new
++    loop
++      perform fsm.handle_machine_events(event.shard_id, event.state_machine_id);
++    end loop;
++
++    return null;
++  end;
++$$ language plpgsql;
++
++comment on function fsm.trig_notify_machine_event is $comment$
++  Handles all of the newly inserted events for all affected state machines.
++$comment$;
++
++set client_min_messages TO warning;
++drop trigger if exists notify_machine_event on fsm.state_machine_event;
++reset client_min_messages;
++
++create trigger notify_machine_event
++after insert
++on fsm.state_machine_event
++referencing new table as new
++for each statement
++execute function fsm.trig_notify_machine_event();
++
++comment on trigger notify_machine_event on fsm.state_machine_event is $comment$
++  Handles all of the newly inserted events for all affected state machines.
++$comment$;
++
++-- set_state_parent_path trigger
++create or replace function fsm.trig_set_state_parent_path() returns trigger as
++$$
++    declare
++        path ltree;
++    begin
++
++        if NEW.parent_id is null then
++            NEW.parent_path = coalesce(NEW.statechart_id, OLD.statechart_id)::text::ltree;
++
++        elseif TG_OP = 'INSERT' or OLD.parent_id is null or OLD.parent_id != NEW.parent_id then
++            select parent_path || id
++            from fsm.state
++            where id = NEW.parent_id and statechart_id = NEW.statechart_id and not is_final
++            into path;
++
++            if path is null then
++                raise exception 'Invalid parent_id. It should exist and not be final: %', NEW.parent_id;
++            end if;
++
++            new.parent_path = path;
++        end if;
++
++        new.node_path = new.parent_path || new.id;
++
++        return new;
++    end;
++$$ language plpgsql;
++
++create trigger set_state_parent_path
++    before insert or update on fsm.state
++    for each row execute procedure fsm.trig_set_state_parent_path();
+diff --git a/pg_statecharts/src/bin/pgrx_embed.rs b/pg_statecharts/src/bin/pgrx_embed.rs
+new file mode 100644
+index 0000000..57483f1
+--- /dev/null
++++ b/pg_statecharts/src/bin/pgrx_embed.rs
+@@ -0,0 +1 @@
++::pgrx::pgrx_embed!();
+\ No newline at end of file
+diff --git a/pg_statecharts/src/gen_charts.rs b/pg_statecharts/src/gen_charts.rs
+new file mode 100644
+index 0000000..e5660b5
+--- /dev/null
++++ b/pg_statecharts/src/gen_charts.rs
+@@ -0,0 +1,686 @@
++use pgrx::*;
++
++#[pg_schema]
++mod fsm {
++    use pgrx::datum::PgVarlena;
++    use pgrx::*;
++    use quick_xml::de::from_str;
++    use serde::{Deserialize, Serialize};
++    use std::collections::HashMap;
++    use std::ffi::OsStr;
++    use std::fmt;
++    use std::fs;
++    use std::path::{Path, PathBuf};
++    use walkdir::WalkDir;
++
++    /*
++    #[pg_extern]
++    fn test_scxml() -> Result<(), Box<dyn std::error::Error>> {
++        let xml_content = r#"
++    <scxml xmlns="http://www.w3.org/2005/07/scxml"
++                  name="email.email_flow"
++                  version="1.0"
++                  initial="queued">
++
++      <state id="queued" name="QUEUED">
++        <transition event="email.sent" target="sent"/>
++        <transition event="email.dont_send" target="not_sent"/>
++
++        <onentry>
++          <script src="email.materialize_email_status" />
++          <script src="email.enqueue_send_email_job" />
++        </onentry>
++      </state>
++
++      <state id="sent" name="SENT">
++        <transition event="email.received" target="received"/>
++        <transition event="email.bounced" target="bounced"/>
++        <transition event="email.marked_as_spam" target="marked_as_spam"/>
++
++        <onentry>
++          <script src="email.materialize_email_status" />
++          <script src="email.update_email_sent_at" />
++        </onentry>
++      </state>
++
++      <state id="received" name="RECEIVED">
++        <transition event="email.marked_as_spam" target="marked_as_spam"/>
++
++        <onentry>
++          <script src="email.materialize_email_status" />
++        </onentry>
++      </state>
++
++      <final id="not_sent" name="NOT_SENT">
++        <onentry>
++          <script src="email.materialize_email_status" />
++        </onentry>
++      </final>
++
++      <final id="bounced" name="BOUNCED">
++        <onentry>
++          <script src="email.materialize_email_status" />
++        </onentry>
++      </final>
++
++      <final id="marked_as_spam" name="MARKED_AS_SPAM">
++        <onentry>
++          <script src="email.materialize_email_status" />
++        </onentry>
++      </final>
++
++    </scxml>
++    "#;
++
++        let scxml: SCXML = match from_str(&xml_content) {
++            Ok(scxml) => scxml,
++            Err(err) => pgrx::error!("Failed to parse SCXML: {}", err),
++        };
++
++        let migration = generate_sql_migration(&scxml);
++        pgrx::info!("Generated SQL migration:\n{}", migration);
++
++        Ok(())
++    }
++    */
++
++    #[pg_extern]
++    fn deploy_scxml_files(
++        source_path: &str,
++        recursive: default!(bool, false),
++    ) -> Result<(), Box<dyn std::error::Error>> {
++        let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
++
++        let migrations = scxml_file_paths
++            .iter()
++            .map(|file_path| {
++                let scxml = read_scxml_file(file_path);
++
++                generate_sql_migration(&scxml).deploy
++            })
++            .collect::<Vec<String>>();
++
++        let migration = migrations.join("\n\n");
++
++        match Spi::run(&migration) {
++            Err(err) => pgrx::error!("Failed to execute migration: {}", err),
++            _ => (),
++        };
++
++        /*
++        pgrx::info!(
++            "Successfully deployed statechart: {} v{}",
++            scxml.name,
++            scxml.version
++        );
++        */
++
++        Ok(())
++    }
++
++    #[pg_extern]
++    fn gen_statechart_sqitch_migrations(
++        source_path: &str,
++        sqitch_dir: &str,
++        recursive: default!(bool, false),
++    ) -> Result<(), Box<dyn std::error::Error>> {
++        let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
++
++        let migrations = scxml_file_paths
++            .iter()
++            .map(|file_path| {
++                let scxml = read_scxml_file(file_path);
++                let migration = generate_sql_migration(&scxml);
++
++                (file_path, scxml, migration)
++            })
++            // collect to break laziness, we want to make sure everything parses before we create
++            // migrations
++            .collect::<Vec<(&PathBuf, SCXML, Migration)>>()
++            .iter()
++            .map(|(file_path, scxml, migration)| {
++                let file_dir = if file_path.is_file() {
++                    file_path.parent().unwrap()
++                } else {
++                    file_path
++                };
++
++                // let relative_path = file_dir.strip_prefix(source_path).unwrap();
++                let migration_path = format!(
++                    "statechart/{}-{}.sql",
++                    scxml.name.replace(".", "/"),
++                    scxml.version
++                );
++
++                let deploy_path = Path::new(sqitch_dir).join("deploy").join(&migration_path);
++                let revert_path = Path::new(sqitch_dir).join("revert").join(&migration_path);
++                let verify_path = Path::new(sqitch_dir).join("verify").join(&migration_path);
++
++                fs::create_dir_all(&deploy_path.parent().unwrap()).unwrap();
++                fs::create_dir_all(&revert_path.parent().unwrap()).unwrap();
++                fs::create_dir_all(&verify_path.parent().unwrap()).unwrap();
++
++                fs::write(&deploy_path, &migration.deploy).unwrap();
++                fs::write(&revert_path, &migration.revert).unwrap();
++                fs::write(&verify_path, &migration.verify).unwrap();
++
++                pgrx::info!("deploy migration path: {}", &deploy_path.display());
++            })
++            .collect::<Vec<()>>();
++
++        Ok(())
++    }
++
++    fn read_scxml_file(file_path: &PathBuf) -> SCXML {
++        let xml_content = match fs::read_to_string(file_path) {
++            Ok(xml_content) => xml_content,
++            Err(err) => {
++                pgrx::error!("Failed to read file '{}': {}", file_path.display(), err)
++            }
++        };
++
++        match from_str(&xml_content) {
++            Ok(scxml) => scxml,
++            Err(err) => pgrx::error!(
++                "Failed to parse SCXML from '{}': {}",
++                file_path.display(),
++                err
++            ),
++        }
++    }
++
++    fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Vec<PathBuf> {
++        let path = Path::new(source_path);
++
++        if !path.exists() {
++            pgrx::error!("Path does not exist: {}", source_path);
++        }
++
++        let mut scxml_file_paths = if path.is_file() {
++            if path.extension() != Some(OsStr::new("scxml")) {
++                pgrx::error!("File is not an .scxml file: {}", source_path);
++            }
++
++            vec![path.to_path_buf()]
++        } else if recursive {
++            WalkDir::new(source_path)
++                .into_iter()
++                .filter_entry(|entry| {
++                    let not_hidden = !entry
++                        .file_name()
++                        .to_str()
++                        .map(|s| s.starts_with("."))
++                        .unwrap_or(false);
++
++                    let is_scxml = entry.path().extension() == Some(OsStr::new("scxml"));
++
++                    let is_dir = entry.file_type().is_dir();
++
++                    not_hidden && (is_scxml || is_dir)
++                })
++                .filter_map(|e| e.ok()) // skip files/directories that we don't have access to
++                .filter(|entry| entry.path().is_file())
++                .map(|entry| entry.path().to_path_buf())
++                .collect()
++        } else {
++            match fs::read_dir(path) {
++                Err(err) => pgrx::error!("Failed reading directory: {}", source_path),
++                Ok(dir_content) => dir_content
++                    .filter_map(|entry| entry.ok().map(|e| e.path()))
++                    .filter(|path| !path.is_dir() && path.extension() == Some(OsStr::new("scxml")))
++                    .collect(),
++            }
++        };
++
++        scxml_file_paths.sort();
++
++        return scxml_file_paths;
++    }
++
++    struct Migration {
++        deploy: String,
++        revert: String,
++        verify: String,
++    }
++
++    fn generate_sql_migration(scxml: &SCXML) -> Migration {
++        let deploy = {
++            let states_and_transitions = {
++                let states = scxml
++                    .states
++                    .to_states_and_transitions(None, scxml.initial.clone());
++                let final_states = scxml
++                    .final_states
++                    .to_states_and_transitions(None, scxml.initial.clone());
++
++                states.join(final_states)
++            };
++
++            // state rows
++            let state_rows = states_and_transitions
++                .states
++                .iter()
++                .map(|s| {
++                    let parent_id = s.parent_id.as_ref().map(|pid| format!("'{}'", pid)).unwrap_or("null".to_string());
++                    let on_entry = s.on_entry.iter().map(|(schema, name)| format!("('{}', '{}')", schema, name)).collect::<Vec<String>>().join(",");
++                    let on_exit = s.on_exit.iter().map(|(schema, name)| format!("('{}', '{}')", schema, name)).collect::<Vec<String>>().join(",");
++
++                    format!("(chart, '{}', '{}', {}, {}, {}, array[{}]::fsm_callback_name[], array[{}]::fsm_callback_name[])", s.id, s.name, parent_id, s.is_initial, s.is_final, on_entry, on_exit)
++                })
++                .collect::<Vec<String>>()
++                .join(",\n");
++
++            // transition rows
++            let transition_rows = states_and_transitions
++                .transitions
++                .iter()
++                .map(|t| {
++                    format!(
++                        "(chart, '{}', '{}', '{}')",
++                        t.event, t.source_state, t.target_state
++                    )
++                })
++                .collect::<Vec<String>>()
++                .join(",\n");
++
++            format!(
++                r#"
++        do $$
++        declare
++        chart bigint;
++        begin
++        insert into fsm.statechart (name, version) values ('{}', '{}'::semver) returning id into chart;
++        insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
++        {};
++        insert into fsm.transition (statechart_id, event, source_state, target_state) values
++        {};
++        end
++        $$;
++        "#,
++                scxml.name, scxml.version, state_rows, transition_rows
++            )
++        };
++
++        let revert = format!(
++            r#"
++with chart as (
++    delete from fsm.statechart
++    where name = '{}'
++    and version = {}::semver
++    returning id
++)
++delete from fsm.state
++    where statechart_id = (select id from chart);
++"#,
++            scxml.name, scxml.version
++        );
++
++        let verify = "".to_string();
++
++        return Migration {
++            deploy,
++            revert,
++            verify,
++        };
++    }
++
++    // SQL SCXML representation
++    #[derive(Debug, Deserialize, PartialEq)]
++    struct SqlStatesAndTransitions {
++        states: Vec<SqlScxmlState>,
++        transitions: Vec<SqlScxmlTransition>,
++    }
++
++    impl SqlStatesAndTransitions {
++        pub fn new() -> SqlStatesAndTransitions {
++            SqlStatesAndTransitions {
++                states: Vec::new(),
++                transitions: Vec::new(),
++            }
++        }
++
++        pub fn join(mut self, mut other: SqlStatesAndTransitions) -> Self {
++            self.states.append(&mut other.states);
++            self.transitions.append(&mut other.transitions);
++            self
++        }
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    struct SqlScxmlState {
++        id: String,
++        name: String,
++        parent_id: Option<String>,
++        is_initial: bool,
++        is_final: bool,
++        on_entry: Vec<(String, String)>,
++        on_exit: Vec<(String, String)>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    struct SqlScxmlTransition {
++        event: String,
++        source_state: String,
++        target_state: String,
++    }
++
++    trait ToStatesAndTransitions {
++        fn to_states_and_transitions(
++            &self,
++            parent_id: Option<String>,
++            parent_initial_id: String,
++        ) -> SqlStatesAndTransitions;
++    }
++
++    impl ToStatesAndTransitions for State {
++        fn to_states_and_transitions(
++            &self,
++            parent_id: Option<String>,
++            parent_initial_id: String,
++        ) -> SqlStatesAndTransitions {
++            let this_state = SqlScxmlState {
++                id: self.id.clone(),
++                name: self.name.clone(),
++                parent_id: parent_id,
++                is_initial: self.id == parent_initial_id,
++                is_final: false,
++                on_entry: self
++                    .on_entry
++                    .iter()
++                    .flat_map(|oe| &oe.scripts)
++                    .map(|s| match s.src.find('.') {
++                        None => ("public".to_string(), s.src.clone()),
++                        Some(dot_pos) => {
++                            let (schema, name_with_dot) = s.src.split_at(dot_pos);
++                            let name = &name_with_dot[1..];
++                            (schema.to_string(), name.to_string())
++                        }
++                    })
++                    .collect(),
++                on_exit: self
++                    .on_exit
++                    .iter()
++                    .flat_map(|oe| &oe.scripts)
++                    .map(|s| match s.src.find('.') {
++                        None => ("public".to_string(), s.src.clone()),
++                        Some(dot_pos) => {
++                            let (schema, name_with_dot) = s.src.split_at(dot_pos);
++                            let name = &name_with_dot[1..];
++                            (schema.to_string(), name.to_string())
++                        }
++                    })
++                    .collect(),
++            };
++
++            let transitions = self
++                .transitions
++                .to_states_and_transitions(Some(self.id.clone()), parent_initial_id.clone());
++
++            let child_states = {
++                let maybe_children_initial_id = self
++                    .initial
++                    .as_ref()
++                    .map(|i| i.transition.as_ref())
++                    .flatten()
++                    .map(|t| t.target.clone());
++
++                // If there are child states then we also need to have an initial state for this child
++                // states
++                match (
++                    maybe_children_initial_id,
++                    self.child_states.is_empty() && self.child_final_states.is_empty(),
++                ) {
++                    (Some(children_initial_id), _) => {
++                        let child_states = self.child_states.to_states_and_transitions(
++                            Some(self.id.clone()),
++                            children_initial_id.clone(),
++                        );
++
++                        let child_final_states = self.child_final_states.to_states_and_transitions(
++                            Some(self.id.clone()),
++                            children_initial_id.clone(),
++                        );
++
++                        child_states.join(child_final_states)
++                    }
++                    (None, true) => SqlStatesAndTransitions::new(),
++                    (None, false) => {
++                        pgrx::error!("state {} has child states but not initial", self.id)
++                    }
++                }
++            };
++
++            let mut result = SqlStatesAndTransitions::new();
++            result.states = vec![this_state];
++
++            return result.join(transitions).join(child_states);
++        }
++    }
++
++    impl ToStatesAndTransitions for FinalState {
++        fn to_states_and_transitions(
++            &self,
++            parent_id: Option<String>,
++            parent_initial_id: String,
++        ) -> SqlStatesAndTransitions {
++            let this_state = SqlScxmlState {
++                id: self.id.clone(),
++                name: self.name.clone(),
++                parent_id: parent_id,
++                is_initial: self.id == parent_initial_id,
++                is_final: true,
++                on_entry: self
++                    .on_entry
++                    .iter()
++                    .flat_map(|oe| &oe.scripts)
++                    .map(|s| match s.src.find('.') {
++                        None => ("public".to_string(), s.src.clone()),
++                        Some(dot_pos) => {
++                            let (schema, name_with_dot) = s.src.split_at(dot_pos);
++                            let name = &name_with_dot[1..];
++                            (schema.to_string(), name.to_string())
++                        }
++                    })
++                    .collect(),
++                on_exit: vec![],
++            };
++
++            let child_states = {
++                let maybe_children_initial_id = self
++                    .initial
++                    .as_ref()
++                    .map(|i| i.transition.as_ref())
++                    .flatten()
++                    .map(|t| t.target.clone());
++
++                // If there are child states then we also need to have an initial state for this child
++                // states
++                match (
++                    maybe_children_initial_id,
++                    self.child_states.is_empty() && self.child_final_states.is_empty(),
++                ) {
++                    (Some(children_initial_id), _) => {
++                        let child_states = self.child_states.to_states_and_transitions(
++                            Some(self.id.clone()),
++                            children_initial_id.clone(),
++                        );
++
++                        let child_final_states = self.child_final_states.to_states_and_transitions(
++                            Some(self.id.clone()),
++                            children_initial_id.clone(),
++                        );
++
++                        child_states.join(child_final_states)
++                    }
++                    (None, true) => SqlStatesAndTransitions::new(),
++                    (None, false) => {
++                        pgrx::error!("state {} has child states but not initial", self.id)
++                    }
++                }
++            };
++
++            let mut result = SqlStatesAndTransitions::new();
++            result.states = vec![this_state];
++
++            return result.join(child_states);
++        }
++    }
++
++    impl ToStatesAndTransitions for Transition {
++        fn to_states_and_transitions(
++            &self,
++            parent_id: Option<String>,
++            parent_initial_id: String,
++        ) -> SqlStatesAndTransitions {
++            let transition = match parent_id {
++                None => pgrx::error!("Can't have transition without parent_id"),
++                Some(some_parent_id) => SqlScxmlTransition {
++                    event: self.event.clone(),
++                    source_state: some_parent_id.clone(),
++                    target_state: self.target.clone(),
++                },
++            };
++
++            let mut result = SqlStatesAndTransitions::new();
++            result.transitions = vec![transition];
++
++            return result;
++        }
++    }
++
++    impl<T> ToStatesAndTransitions for Vec<T>
++    where
++        T: ToStatesAndTransitions,
++    {
++        fn to_states_and_transitions(
++            &self,
++            parent_id: Option<String>,
++            parent_initial_id: String,
++        ) -> SqlStatesAndTransitions {
++            let mut result = SqlStatesAndTransitions::new();
++
++            for item in self.iter() {
++                let item_result =
++                    item.to_states_and_transitions(parent_id.clone(), parent_initial_id.clone());
++                result = result.join(item_result);
++            }
++
++            result
++        }
++    }
++
++    // Raw SCXML representation (as represented in the XML)
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct SCXML {
++        #[serde(rename = "@xmlns")]
++        pub xmlns: String,
++
++        #[serde(rename = "@name")]
++        pub name: String,
++
++        #[serde(rename = "@version")]
++        pub version: String,
++
++        #[serde(rename = "@initial")]
++        pub initial: String,
++
++        #[serde(rename = "state", default)]
++        pub states: Vec<State>,
++
++        #[serde(rename = "final", default)]
++        pub final_states: Vec<FinalState>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct State {
++        #[serde(rename = "@id")]
++        pub id: String,
++
++        #[serde(rename = "@name")]
++        pub name: String,
++
++        #[serde(rename = "transition", default)]
++        pub transitions: Vec<Transition>,
++
++        #[serde(rename = "onentry", default)]
++        pub on_entry: Vec<OnEntry>,
++
++        #[serde(rename = "onexit", default)]
++        pub on_exit: Vec<OnExit>,
++
++        #[serde(rename = "state", default)]
++        pub child_states: Vec<State>,
++
++        #[serde(rename = "final", default)]
++        pub child_final_states: Vec<FinalState>,
++
++        #[serde(rename = "parallel", default)]
++        pub child_parallel_states: Vec<State>,
++
++        #[serde(rename = "initial", default)]
++        pub initial: Option<Initial>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct Initial {
++        #[serde(rename = "transition", default)]
++        pub transition: Option<InitialTransition>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct InitialTransition {
++        #[serde(rename = "@target")]
++        pub target: String,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct FinalState {
++        #[serde(rename = "@id")]
++        pub id: String,
++
++        #[serde(rename = "@name")]
++        pub name: String,
++
++        #[serde(rename = "onentry", default)]
++        pub on_entry: Vec<OnEntry>,
++
++        #[serde(rename = "state", default)]
++        pub child_states: Vec<State>,
++
++        #[serde(rename = "final", default)]
++        pub child_final_states: Vec<FinalState>,
++
++        #[serde(rename = "parallel", default)]
++        pub child_parallel_states: Vec<State>,
++
++        #[serde(rename = "initial", default)]
++        pub initial: Option<Initial>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct Transition {
++        #[serde(rename = "@event")]
++        pub event: String,
++
++        #[serde(rename = "@target")]
++        pub target: String,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct OnEntry {
++        #[serde(rename = "script", default)]
++        pub scripts: Vec<Script>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct OnExit {
++        #[serde(rename = "script", default)]
++        pub scripts: Vec<Script>,
++    }
++
++    #[derive(Debug, Deserialize, PartialEq)]
++    pub struct Script {
++        #[serde(rename = "@src")]
++        pub src: String,
++    }
++}
+diff --git a/pg_statecharts/src/lib.rs b/pg_statecharts/src/lib.rs
+new file mode 100644
+index 0000000..722a1eb
+--- /dev/null
++++ b/pg_statecharts/src/lib.rs
+@@ -0,0 +1,49 @@
++// src/lib.rs
++use crate::pgrx_sql_entity_graph::metadata::*;
++use pgrx::datum::PgVarlena;
++use pgrx::*;
++use serde::{Deserialize, Serialize};
++use std::cmp::Ordering;
++
++mod gen_charts;
++mod semver;
++
++use std::str::FromStr;
++
++/*
++#[derive(Copy, Clone, Serialize, Deserialize, PostgresType)]
++#[pgvarlena_inoutfuncs] // This is required for non-serde types
++struct Semver {
++    major: i32,
++    minor: i32,
++    patch: i32,
++}
++
++/// Implement the PgVarlenaInOutFuncs trait to provide our own text input and output functions
++impl PgVarlenaInOutFuncs for Semver {
++    // parse the provided CStr into a `PgVarlena<Semver>`
++    fn input(input: &core::ffi::CStr) -> PgVarlena<Self> {
++        let mut iter = input.to_str().unwrap().split('.');
++        let (major, minor, patch) = (iter.next(), iter.next(), iter.next());
++
++        let mut result = PgVarlena::<Semver>::new();
++        result.major = i32::from_str(major.unwrap()).expect("major is not a valid i32");
++        result.minor = i32::from_str(minor.unwrap()).expect("minor is not a valid i32");
++        result.patch = i32::from_str(patch.unwrap()).expect("patch is not a valid i32");
++        result
++    }
++
++    // Output ourselves as text into the provided `StringInfo` buffer
++    fn output(&self, buffer: &mut StringInfo) {
++        buffer.push_str(&format!("{}.{}.{}", self.major, self.minor, self.patch));
++    }
++}
++*/
++
++extension_sql_file!(
++    "../sql/pg_statecharts--0.1.0--tables.sql",
++    name = "tables",
++    requires = ["semver_type"] // bootstrap
++);
++
++pgrx::pg_module_magic!();
+diff --git a/pg_statecharts/src/semver.rs b/pg_statecharts/src/semver.rs
+new file mode 100644
+index 0000000..4b56f13
+--- /dev/null
++++ b/pg_statecharts/src/semver.rs
+@@ -0,0 +1,122 @@
++use pgrx::datum::PgVarlena;
++use pgrx::*;
++use serde::{Deserialize, Serialize};
++use std::cmp::Ordering;
++use std::str::FromStr;
++
++#[derive(Copy, Clone, Eq, PartialEq, Serialize, Deserialize, PostgresType)]
++#[pgvarlena_inoutfuncs] // This is required for non-serde types
++struct Semver {
++    major: i32,
++    minor: i32,
++    patch: i32,
++    // prerel: Option<String>,
++}
++
++/// Implement the PgVarlenaInOutFuncs trait to provide our own text input and output functions
++impl PgVarlenaInOutFuncs for Semver {
++    // parse the provided CStr into a `PgVarlena<Semver>`
++    fn input(input: &core::ffi::CStr) -> PgVarlena<Self> {
++        let mut iter = input.to_str().unwrap().split('.');
++        let (major, minor, patch) = (iter.next(), iter.next(), iter.next());
++
++        let mut result = PgVarlena::<Semver>::new();
++        result.major = i32::from_str(major.unwrap()).expect("major is not a valid i32");
++        result.minor = i32::from_str(minor.unwrap()).expect("minor is not a valid i32");
++        result.patch = i32::from_str(patch.unwrap()).expect("patch is not a valid i32");
++        result
++    }
++
++    // Output ourselves as text into the provided `StringInfo` buffer
++    fn output(&self, buffer: &mut StringInfo) {
++        buffer.push_str(&format!("{}.{}.{}", self.major, self.minor, self.patch));
++    }
++}
++
++impl PartialOrd for Semver {
++    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
++        Some(self.cmp(other))
++    }
++}
++
++impl Ord for Semver {
++    fn cmp(&self, other: &Self) -> Ordering {
++        self.major
++            .cmp(&other.major)
++            .then(self.minor.cmp(&other.minor))
++            .then(self.patch.cmp(&other.patch))
++    }
++}
++/*
++#[pg_extern]
++fn do_a_thing(mut input: PgVarlena<Semver>) -> PgVarlena<Semver> {
++    input.c += 99; // performs a copy-on-write on the backing varlena pointer
++    input
++}
++*/
++
++#[pg_extern]
++fn semver_lt(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() < right.as_ref()
++}
++
++#[pg_extern]
++fn semver_le(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() <= right.as_ref()
++}
++
++#[pg_extern]
++fn semver_eq(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() == right.as_ref()
++}
++
++#[pg_extern]
++fn semver_ne(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() != right.as_ref()
++}
++
++#[pg_extern]
++fn semver_ge(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() >= right.as_ref()
++}
++
++#[pg_extern]
++fn semver_gt(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> bool {
++    left.as_ref() > right.as_ref()
++}
++
++// Function needed for implicit casting of text to semver
++#[pg_extern]
++fn semver_from_text(input: &str) -> PgVarlena<Semver> {
++    // Convert &str to CStr manually
++    let cstr = std::ffi::CString::new(input).unwrap();
++    Semver::input(cstr.as_c_str())
++}
++
++// B-tree comparison function (returns -1, 0, 1)
++#[pg_extern]
++fn semver_cmp(left: PgVarlena<Semver>, right: PgVarlena<Semver>) -> i32 {
++    match left.as_ref().cmp(right.as_ref()) {
++        Ordering::Less => -1,
++        Ordering::Equal => 0,
++        Ordering::Greater => 1,
++    }
++}
++
++// Hash function
++#[pg_extern]
++fn hash_semver(semver: PgVarlena<Semver>) -> i32 {
++    // Simple but effective hash for 3 int32s
++    // Using prime numbers for better distribution
++    let mut hash: i32 = 17;
++    hash = hash.wrapping_mul(31).wrapping_add(semver.major);
++    hash = hash.wrapping_mul(31).wrapping_add(semver.minor);
++    hash = hash.wrapping_mul(31).wrapping_add(semver.patch);
++    hash
++}
++
++extension_sql_file!(
++    "../sql/pg_statecharts--0.1.0--semver.sql",
++    name = "semver_type",
++    requires = [Semver, semver_lt, semver_ne, hash_semver]
++);
+diff --git a/pg_statecharts/tests/pg_regress/expected/setup.out b/pg_statecharts/tests/pg_regress/expected/setup.out
+new file mode 100644
+index 0000000..7fd5f2c
+--- /dev/null
++++ b/pg_statecharts/tests/pg_regress/expected/setup.out
+@@ -0,0 +1,3 @@
++-- this setup file is run immediately after the regression database is (re)created
++-- the file is optional but you likely want to create the extension
++CREATE EXTENSION pg_statecharts;
+diff --git a/pg_statecharts/tests/pg_regress/sql/setup.sql b/pg_statecharts/tests/pg_regress/sql/setup.sql
+new file mode 100644
+index 0000000..7fd5f2c
+--- /dev/null
++++ b/pg_statecharts/tests/pg_regress/sql/setup.sql
+@@ -0,0 +1,3 @@
++-- this setup file is run immediately after the regression database is (re)created
++-- the file is optional but you likely want to create the extension
++CREATE EXTENSION pg_statecharts;
+diff --git a/setup-pgrx-dependencies.sh b/setup-pgrx-dependencies.sh
+new file mode 100755
+index 0000000..6b7f252
+--- /dev/null
++++ b/setup-pgrx-dependencies.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++
++set -e
++
++# this will install the world, go get a cup of tea
++cargo install --locked cargo-pgrx
++cargo pgrx init

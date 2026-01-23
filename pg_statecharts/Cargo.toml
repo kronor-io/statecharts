@@ -1,0 +1,37 @@
+[package]
+name = "pg_statecharts"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pg_statecharts"
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_pg_statecharts"
+path = "./src/bin/pgrx_embed.rs"
+
+[features]
+default = ["pg16"]
+pg16 = ["pgrx/pg16", "pgrx-tests/pg16" ]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17" ]
+pg18 = ["pgrx/pg18", "pgrx-tests/pg18" ]
+pg_test = []
+
+[dependencies]
+pgrx = { version = "=0.16.1", features = ["pg16"] }
+serde = { version = "1.0", features = ["derive"] }
+quick-xml = { version = "0.39", features = ["serialize"] }
+walkdir = "2"
+
+[dev-dependencies]
+pgrx-tests = "=0.16.1"
+
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
