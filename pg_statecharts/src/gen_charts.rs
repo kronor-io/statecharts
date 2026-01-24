@@ -224,61 +224,58 @@ fn generate_sql_migration(scxml: &SCXML, project: &String) -> Migration {
             .join(",\n");
 
         format!(
-            r#"
-    -- Deploy {}:statechart/{}-{} to pg
+r#"-- Deploy {}:statechart/{}-{} to pg
 
-    -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
-    BEGIN;
-    do $$
-    declare
-    chart bigint;
-    begin
-    insert into fsm.statechart (name, version) values ('{}', '{}'::semver) returning id into chart;
-    insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
-    {};
-    insert into fsm.transition (statechart_id, event, source_state, target_state) values
-    {};
-    end
-    $$;
-    COMMIT;
-    "#,
+BEGIN;
+do $$
+declare
+chart bigint;
+begin
+insert into fsm.statechart (name, version) values ('{}', '{}'::semver) returning id into chart;
+insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
+{};
+insert into fsm.transition (statechart_id, event, source_state, target_state) values
+{};
+end
+$$;
+COMMIT;
+"#,
             project, scxml.name, scxml.version, scxml.name, scxml.version, state_rows, transition_rows
         )
     };
 
     let revert = format!(
-        r#"
-        -- Revert {}:statechart/{}-{} to pg
+r#"-- Revert {}:statechart/{}-{} to pg
 
-        -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
 
-        BEGIN;
+BEGIN;
 
-        with chart as (
-            delete from fsm.statechart
-            where name = '{}'
-            and version = {}::semver
-            returning id
-        )
-        delete from fsm.state
-            where statechart_id = (select id from chart);
+with chart as (
+    delete from fsm.statechart
+    where name = '{}'
+    and version = {}::semver
+    returning id
+)
+delete from fsm.state
+    where statechart_id = (select id from chart);
 
-        COMMIT;
-        "#,
+COMMIT;
+"#,
         project, scxml.name, scxml.version, scxml.name, scxml.version
     );
 
     let verify = format!(
-        r#"
-        -- Verify {}:statechart/{}-{} to pg
+r#"-- Verify {}:statechart/{}-{} to pg
 
-        -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
+-- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
-        BEGIN;
-        ROLLBACK;
-        "#,
+BEGIN;
+ROLLBACK;
+"#,
         project, scxml.name, scxml.version
     );
 

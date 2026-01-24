@@ -70,11 +70,3 @@ mod fsm {
 
 pgrx::pg_module_magic!();
 
-/*
-extension_sql_file!(
-    "../sql/pg_statecharts--0.1.0--tables.sql",
-    name = "tables",
-    requires = ["semver_type"] // bootstrap
-);
-*/
-
