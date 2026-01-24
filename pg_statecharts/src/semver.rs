@@ -9,7 +9,7 @@ use std::str::FromStr;
 struct Semver {
     major: i32,
     minor: i32,
-    patch: i32,
+    patch: Option<i32>,
     // prerel: Option<String>,
 }
 
@@ -23,13 +23,17 @@ impl PgVarlenaInOutFuncs for Semver {
         let mut result = PgVarlena::<Semver>::new();
         result.major = i32::from_str(major.unwrap()).expect("major is not a valid i32");
         result.minor = i32::from_str(minor.unwrap()).expect("minor is not a valid i32");
-        result.patch = i32::from_str(patch.unwrap()).expect("patch is not a valid i32");
+        result.patch = patch.map(|p| i32::from_str(p).expect("patch is not a valid i32"));
         result
     }
 
     // Output ourselves as text into the provided `StringInfo` buffer
     fn output(&self, buffer: &mut StringInfo) {
-        buffer.push_str(&format!("{}.{}.{}", self.major, self.minor, self.patch));
+        let formatted_patch = match self.patch {
+            Some(p) => format!(".{}", p),
+            None => "".to_string()
+        };
+        buffer.push_str(&format!("{}.{}{}", self.major, self.minor, formatted_patch));
     }
 }
 
@@ -111,7 +115,7 @@ fn hash_semver(semver: PgVarlena<Semver>) -> i32 {
     let mut hash: i32 = 17;
     hash = hash.wrapping_mul(31).wrapping_add(semver.major);
     hash = hash.wrapping_mul(31).wrapping_add(semver.minor);
-    hash = hash.wrapping_mul(31).wrapping_add(semver.patch);
+    hash = hash.wrapping_mul(31).wrapping_add(semver.patch.unwrap_or(0));
     hash
 }
 
