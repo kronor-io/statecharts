@@ -233,7 +233,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('{}', '{}'::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('{}', {}::semver) returning id into chart;
 insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
 {};
 insert into fsm.transition (statechart_id, event, source_state, target_state) values
@@ -247,7 +247,7 @@ COMMIT;
     };
 
     let revert = format!(
-r#"-- Revert {}:statechart/{}-{} to pg
+r#"-- Revert {}:statechart/{}-{} from pg
 
 -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
@@ -269,7 +269,7 @@ COMMIT;
     );
 
     let verify = format!(
-r#"-- Verify {}:statechart/{}-{} to pg
+r#"-- Verify {}:statechart/{}-{} on pg
 
 -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN
 
