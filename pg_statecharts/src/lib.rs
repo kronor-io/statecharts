@@ -1,11 +1,13 @@
 use pgrx::*;
 
-mod gen_charts;
 mod semver;
+mod gen_charts;
 
 
 #[pg_schema]
 mod fsm {
+    use crate::gen_charts;
+
     use pgrx::*;
 
     /*
@@ -19,7 +21,7 @@ mod fsm {
     
     // tables
     extension_sql_file!("../sql/table/statechart.sql", requires = ["fsm_event_payload"]);
-    extension_sql_file!("../sql/table/state.sql", requires = ["state"]);
+    extension_sql_file!("../sql/table/state.sql", requires = ["statechart"]);
     extension_sql_file!("../sql/table/transition.sql", requires = ["state"]);
     extension_sql_file!("../sql/table/state_machine.sql", requires = ["transition"]);
     extension_sql_file!("../sql/table/state_machine_state.sql", requires = ["state_machine"]);
@@ -46,6 +48,24 @@ mod fsm {
     extension_sql_file!("../sql/trigger/check_valid_initial_state.sql", requires = ["state_machine_event"]);
     extension_sql_file!("../sql/trigger/notify_machine_event.sql", requires = ["state_machine_event"]);
     extension_sql_file!("../sql/trigger/set_state_parent_path.sql", requires = ["state_machine_event"]);
+
+    // functions to load .scxml files into the database
+    #[pg_extern(requires = ["state_machine_event"])]
+    pub fn deploy_scxml_files(
+        source_path: &str,
+        recursive: default!(bool, false),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        gen_charts::deploy_scxml_files(source_path, recursive)
+    }
+
+    #[pg_extern(requires = ["state_machine_event"])]
+    pub fn gen_statechart_sqitch_migrations(
+        source_path: &str,
+        sqitch_plan_file_path: &str,
+        recursive: default!(bool, false),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        gen_charts::gen_statechart_sqitch_migrations(source_path, sqitch_plan_file_path, recursive)
+    }
 }
 
 pgrx::pg_module_magic!();
