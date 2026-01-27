@@ -4,5 +4,5 @@ module_pathname = 'pg_statecharts'
 relocatable = false
 superuser = true
 trusted = false
-# requires = 'ltree, semver'
-requires = 'ltree'
+requires = 'ltree, semver'
+# requires = 'ltree'
