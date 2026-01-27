@@ -23,6 +23,8 @@ pgrx = { version = "=0.16.1", features = ["pg18"] }
 serde = { version = "1.0", features = ["derive"] }
 quick-xml = { version = "0.39", features = ["serialize"] }
 walkdir = "2"
+regex = "1.12.2"
+chrono = "0.4.43"
 
 [dev-dependencies]
 pgrx-tests = "=0.16.1"

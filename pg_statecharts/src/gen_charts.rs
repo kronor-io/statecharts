@@ -5,6 +5,9 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+use regex::Regex;
+use chrono::{Utc};
+use std::io::Write;
 
 pub fn deploy_scxml_files(
     source_path: &str,
@@ -33,14 +36,6 @@ pub fn deploy_scxml_files(
         _ => (),
     };
 
-    /*
-    pgrx::info!(
-        "Successfully deployed statechart: {} v{}",
-        scxml.name,
-        scxml.version
-    );
-    */
-
     Ok(())
 }
 
@@ -53,6 +48,31 @@ pub fn gen_statechart_sqitch_migrations(
         Ok(sqitch_project) => sqitch_project,
         Err(err) => pgrx::error!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)
     };
+
+    // we have one sqitch_plan to read from
+    let sqitch_plan = match fs::read_to_string(sqitch_plan_file_path) {
+        Ok(content) => content,
+        Err(err) => pgrx::error!("Couldn't read sqitch plan file. Error: {}", err)
+    };
+
+    // ...and one mutable reference to the file that we can append to
+    let mut sqitch_plan_output = {
+        let r_file =
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(sqitch_plan_file_path);
+
+        match r_file {
+            Ok(file) => file,
+            Err(err) => pgrx::error!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)
+        }
+    };
+
+    // make sure that the sqitch plan ends with a newline to not run into problem when adding more
+    // lines later
+    if !sqitch_plan.ends_with('\n') {
+        writeln!(sqitch_plan_output)?;
+    }
 
     let sqitch_dir = Path::new(sqitch_plan_file_path).parent().unwrap();
 
@@ -71,10 +91,35 @@ pub fn gen_statechart_sqitch_migrations(
         .collect::<Vec<(&PathBuf, SCXML, Migration)>>()
         .iter()
         .map(|(_file_path, scxml, migration)| {
-            let migration_path = format!(
+            let migration_name = format!(
                 "statechart/{}-{}.sql",
                 scxml.name.replace(".", "/"),
                 scxml.version
+            );
+
+            // first we check if the migration is already present in sqitch.plan
+            {
+                let migration_regex = {
+                    let escaped_name = regex::escape(&migration_name);
+                    let pattern = format!(r"^{}\b", escaped_name);
+                    Regex::new(&pattern).unwrap()
+                };
+
+                if !sqitch_plan.lines().any(|line| migration_regex.is_match(line)) {
+                    let timestamp_str = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    let migration_line = format!(
+                        "{} {} pg_statecharts <pg_statecharts@postgres> # {}\n",
+                        &migration_name, timestamp_str, &migration_name
+                    );
+
+                    std::io::Write::write_all(&mut sqitch_plan_output, migration_line.as_bytes()).unwrap();
+                }
+            }
+
+            // now we generate the contents of the migration
+            let migration_path = format!(
+                "{}.sql",
+                &migration_name
             );
 
             let deploy_path = sqitch_dir.join("deploy").join(&migration_path);
