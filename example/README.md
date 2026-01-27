@@ -31,7 +31,7 @@ $
 $ make gen-charts 
 sudo chmod -R 777 sqitch/sqitch.plan
 docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$GEN_CHARTS_QUERY"
-INFO:  deploy migration path: /repo/sqitch/deploy/statechart/lightswitch_flow-1.0.sql.sql
+INFO:  deploy migration path: /repo/sqitch/deploy/statechart/lightswitch_flow-1.0.sql
  gen_statechart_sqitch_migrations 
 ----------------------------------
  

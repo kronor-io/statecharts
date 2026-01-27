@@ -92,7 +92,7 @@ pub fn gen_statechart_sqitch_migrations(
         .iter()
         .map(|(_file_path, scxml, migration)| {
             let migration_name = format!(
-                "statechart/{}-{}.sql",
+                "statechart/{}-{}",
                 scxml.name.replace(".", "/"),
                 scxml.version
             );
