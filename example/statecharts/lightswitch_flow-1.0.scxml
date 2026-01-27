@@ -1,0 +1,22 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              name="lightswitch_flow"
+              version="1.0"
+              initial="off">
+
+  <state id="off" name="OFF">
+    <transition event="lightswitch.turn_on" target="on"/>
+
+    <onentry>
+      <script src="turn_off_lightswitch" />
+    </onentry>
+  </state>
+
+  <state id="on" name="ON">
+    <transition event="lightswitch.turn_off" target="off"/>
+
+    <onentry>
+      <script src="turn_on_lightswitch" />
+    </onentry>
+  </state>
+
+</scxml>

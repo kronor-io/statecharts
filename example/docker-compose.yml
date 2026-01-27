@@ -1,0 +1,16 @@
+services:
+  db:
+    build:
+      context: ..
+      dockerfile: example/postgres.Dockerfile
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/18/docker
+      - .:/repo
+    environment:
+      POSTGRES_PASSWORD: hunter2
+    working_dir: /repo
+
+volumes:
+  dbdata:
