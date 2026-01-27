@@ -6,35 +6,44 @@ The state machine has two states, on and off.
 
 ### Setup
 
+We need to deploy the migrations once before we can generate the statechart
+migration because the first migration contains the `create extension` command,
+without it none of the statechart functionality will be available in the
+database.
+
 ```bash
 $ docker compose up -d db
 [+] up 3/3
  ✔ Network example_default Created                                                                                                                                                  0.0s
  ✔ Volume example_dbdata   Created                                                                                                                                                  0.0s
- ✔ Container example-db-1  Created    
+ ✔ Container example-db-1  Created  
 $
 $
 $ make deploy-migrations 
 docker compose exec db sqitch --chdir sqitch deploy
 Adding registry tables to db:postgres://postgres@localhost:5432/postgres
 Deploying changes to db:postgres://postgres@localhost:5432/postgres
-  + lightswitch ...................... psql:deploy/lightswitch.sql:7: NOTICE:  installing required extension "ltree"
+  + lightswitch .. psql:deploy/lightswitch.sql:7: NOTICE:  installing required extension "ltree"
 psql:deploy/lightswitch.sql:7: NOTICE:  installing required extension "semver"
 ok
-  + statechart/lightswitch_flow-1.0 .. ok
-$
-$
+$ 
+$ 
 $ make gen-charts 
+sudo chmod -R 777 sqitch/sqitch.plan
 docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$GEN_CHARTS_QUERY"
-INFO:  deploy migration path: /repo/sqitch/deploy/statechart/lightswitch_flow-1.0.sql
+INFO:  deploy migration path: /repo/sqitch/deploy/statechart/lightswitch_flow-1.0.sql.sql
  gen_statechart_sqitch_migrations 
 ----------------------------------
  
 (1 row)
 
 sudo chmod -R 777 sqitch/**/statechart
-$
-$ make deploy-migrations
+$ 
+$ 
+$ make deploy-migrations 
+docker compose exec db sqitch --chdir sqitch deploy
+Deploying changes to db:postgres://postgres@localhost:5432/postgres
+  + statechart/lightswitch_flow-1.0.sql .. ok
 ```
 
 ### Using state machines
