@@ -388,7 +388,7 @@ ROLLBACK;
 }
 
 // SQL SCXML representation
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct SqlStatesAndTransitions {
     states: Vec<SqlScxmlState>,
     transitions: Vec<SqlScxmlTransition>,
@@ -409,7 +409,7 @@ impl SqlStatesAndTransitions {
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct SqlScxmlState {
     id: String,
     name: String,
@@ -420,7 +420,7 @@ struct SqlScxmlState {
     on_exit: Vec<(String, String)>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct SqlScxmlTransition {
     event: String,
     source_state: String,
