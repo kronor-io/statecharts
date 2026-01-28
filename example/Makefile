@@ -13,12 +13,12 @@ define GEN_CHARTS_QUERY
 	);
 endef
 
-# The generated files will be owned by the postgres user, we need to chmod
-# them so that they can edited by you
+# The generated files will be owned by the docker user, we need to chmod them
+# so that they can read by us
 export GEN_CHARTS_QUERY
 .PHONY: gen-charts
 gen-charts:
-	sudo chmod -R 777 sqitch/sqitch.plan
+	sudo chmod -R 777 sqitch/sqitch.plan sqitch/**/statechart
 	docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$$GEN_CHARTS_QUERY"
 	sudo chmod -R 777 sqitch/**/statechart
 
