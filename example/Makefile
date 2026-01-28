@@ -18,7 +18,7 @@ endef
 export GEN_CHARTS_QUERY
 .PHONY: gen-charts
 gen-charts:
-	sudo chmod -R 777 sqitch/sqitch.plan sqitch/**/statechart
+	sudo chmod -R 777 sqitch/sqitch.plan
 	docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$$GEN_CHARTS_QUERY"
 	sudo chmod -R 777 sqitch/**/statechart
 
