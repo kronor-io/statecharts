@@ -4,7 +4,7 @@ access-database:
 
 .PHONY: deploy-migrations
 deploy-migrations:
-	docker compose exec db sqitch --chdir sqitch deploy
+	docker compose exec db sqitch --chdir sqitch deploy --verify
 
 define GEN_CHARTS_QUERY
 	select fsm.gen_statechart_sqitch_migrations(
