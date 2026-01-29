@@ -63,8 +63,9 @@ mod fsm {
         source_path: &str,
         sqitch_plan_file_path: &str,
         recursive: default!(bool, false),
+        file_permission_666: default!(bool, false),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        gen_charts::gen_statechart_sqitch_migrations(source_path, sqitch_plan_file_path, recursive)
+        gen_charts::gen_statechart_sqitch_migrations(source_path, sqitch_plan_file_path, recursive, file_permission_666)
     }
 }
 

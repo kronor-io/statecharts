@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 use regex::Regex;
 use chrono::{Utc};
 use std::io::Write;
+use std::os::unix::fs::{PermissionsExt};
 
 pub fn deploy_scxml_files(
     source_path: &str,
@@ -42,7 +43,8 @@ pub fn deploy_scxml_files(
 pub fn gen_statechart_sqitch_migrations(
     source_path: &str,
     sqitch_plan_file_path: &str,
-    recursive: default!(bool, false),
+    recursive: bool,
+    file_permission_666: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sqitch_project = match extract_project_from_sqitch_plan(sqitch_plan_file_path) {
         Ok(sqitch_project) => sqitch_project,
@@ -122,19 +124,67 @@ pub fn gen_statechart_sqitch_migrations(
             let revert_path = sqitch_dir.join("revert").join(&migration_path);
             let verify_path = sqitch_dir.join("verify").join(&migration_path);
 
-            fs::create_dir_all(&deploy_path.parent().unwrap()).unwrap();
-            fs::create_dir_all(&revert_path.parent().unwrap()).unwrap();
-            fs::create_dir_all(&verify_path.parent().unwrap()).unwrap();
+            create_sqitch_file(&deploy_path, &migration.deploy, file_permission_666);
+            create_sqitch_file(&revert_path, &migration.revert, file_permission_666);
+            create_sqitch_file(&verify_path, &migration.verify, file_permission_666);
 
-            fs::write(&deploy_path, &migration.deploy).unwrap();
-            fs::write(&revert_path, &migration.revert).unwrap();
-            fs::write(&verify_path, &migration.verify).unwrap();
-
-            pgrx::info!("deploy migration path: {}", &deploy_path.display());
+            pgrx::info!("created migration: {}", &migration_name);
         })
         .collect::<Vec<()>>();
 
     Ok(())
+}
+
+/// If file_permission_666 is set then the file and the its parent directories (that didn't already
+/// exist) will have their permissions set to be readable and writeable by all users on the
+/// machine.
+///
+/// This is because if the database is running in a container then any newly created files will be
+/// owned by the docker user and by default they won't be accessible by whatever user you are.
+fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
+
+    if!file_permission_666 {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, content).unwrap();
+
+            return;
+    }
+
+    // Create parent directories as needed and give them 777 permissions when they're created
+    {
+        // Track which directories we need to create
+        let mut dirs_to_create = Vec::new();
+        let mut current = path.parent().unwrap().to_path_buf();
+        
+        // Walk up to find which directories don't exist
+        while !current.exists() && current.parent().is_some() {
+            dirs_to_create.push(current.clone());
+            current = current.parent().unwrap().to_path_buf();
+        }
+        
+        // Create directories from top to bottom
+        for dir in dirs_to_create.iter().rev() {
+            fs::create_dir(dir).unwrap();
+            let perms = fs::Permissions::from_mode(0o777);
+            fs::set_permissions(dir, perms).map_err(|err| format!("Error while setting dir permissions: {}", err)).unwrap();
+        }
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)        // Open file for writing
+        .create(true)       // Create if it doesn't exist
+        .truncate(true)     // Clear existing contents if not empty
+        .open(path)
+        .map_err(|err| format!("Error while creating file: {}, {}", &path.display(), err))
+        .unwrap();
+        
+    file.write_all(content.as_bytes()).unwrap();
+
+    // Set permissions to rw-rw-rw-
+    std::fs::set_permissions(
+        path,
+        std::fs::Permissions::from_mode(0o666)
+    ).unwrap();
 }
 
 fn extract_project_from_sqitch_plan<P: AsRef<Path>>(path: P) -> Result<String, String> {
