@@ -9,6 +9,7 @@ use regex::Regex;
 use chrono::{Utc};
 use std::io::Write;
 use std::os::unix::fs::{PermissionsExt};
+use std::io::Read;
 
 pub fn deploy_scxml_files(
     source_path: &str,
@@ -46,21 +47,10 @@ pub fn gen_statechart_sqitch_migrations(
     recursive: bool,
     file_permission_666: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let sqitch_project = match extract_project_from_sqitch_plan(sqitch_plan_file_path) {
-        Ok(sqitch_project) => sqitch_project,
-        Err(err) => pgrx::error!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)
-    };
-
-    // we have one sqitch_plan to read from
-    let sqitch_plan = match fs::read_to_string(sqitch_plan_file_path) {
-        Ok(content) => content,
-        Err(err) => pgrx::error!("Couldn't read sqitch plan file. Error: {}", err)
-    };
-
-    // ...and one mutable reference to the file that we can append to
-    let mut sqitch_plan_output = {
+    let mut sqitch_plan_file = {
         let r_file =
             std::fs::OpenOptions::new()
+                .read(true)
                 .append(true)
                 .open(sqitch_plan_file_path);
 
@@ -70,17 +60,24 @@ pub fn gen_statechart_sqitch_migrations(
         }
     };
 
-    // make sure that the sqitch plan ends with a newline to not run into problem when adding more
-    // lines later
-    if !sqitch_plan.ends_with('\n') {
-        writeln!(sqitch_plan_output)?;
-    }
+    let sqitch_plan_string = {
+        let mut buffer = String::new();
+        sqitch_plan_file.read_to_string(&mut buffer).unwrap();
+        buffer
+    };
+
+    let sqitch_project =
+        sqitch_plan_string
+            .lines()
+            .find(|line| line.starts_with("%project="))
+            .map_or_else(
+                || pgrx::error!("Couldn't find %project property in sqitch plan file"),
+                |line| line.trim_start_matches("%project=").trim().to_string()
+            );
 
     let sqitch_dir = Path::new(sqitch_plan_file_path).parent().unwrap();
 
-    let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
-
-    let _ = scxml_file_paths
+    find_scxml_file_paths(source_path, recursive)
         .iter()
         .map(|file_path| {
             let scxml = read_scxml_file(file_path);
@@ -92,7 +89,7 @@ pub fn gen_statechart_sqitch_migrations(
         // migrations
         .collect::<Vec<(&PathBuf, SCXML, Migration)>>()
         .iter()
-        .map(|(_file_path, scxml, migration)| {
+        .for_each(|(_file_path, scxml, migration)| {
             let migration_name = scxml.migration_name();
 
             // first we check if the migration is already present in sqitch.plan
@@ -103,14 +100,14 @@ pub fn gen_statechart_sqitch_migrations(
                     Regex::new(&pattern).unwrap()
                 };
 
-                if !sqitch_plan.lines().any(|line| migration_regex.is_match(line)) {
+                if !sqitch_plan_string.lines().any(|line| migration_regex.is_match(line)) {
                     let timestamp_str = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
                     let migration_line = format!(
                         "{} {} pg_statecharts <pg_statecharts@postgres> # {}\n",
                         &migration_name, timestamp_str, &migration_name
                     );
 
-                    std::io::Write::write_all(&mut sqitch_plan_output, migration_line.as_bytes()).unwrap();
+                    std::io::Write::write_all(&mut sqitch_plan_file, migration_line.as_bytes()).unwrap();
                 }
             }
 
@@ -129,8 +126,7 @@ pub fn gen_statechart_sqitch_migrations(
             create_sqitch_file(&verify_path, &migration.verify, file_permission_666);
 
             pgrx::info!("created migration: {}", &migration_name);
-        })
-        .collect::<Vec<()>>();
+        });
 
     Ok(())
 }
@@ -142,12 +138,11 @@ pub fn gen_statechart_sqitch_migrations(
 /// This is because if the database is running in a container then any newly created files will be
 /// owned by the docker user and by default they won't be accessible by whatever user you are.
 fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
+    if !file_permission_666 {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
 
-    if!file_permission_666 {
-            fs::create_dir_all(path.parent().unwrap()).unwrap();
-            fs::write(path, content).unwrap();
-
-            return;
+        return;
     }
 
     // Create parent directories as needed and give them 777 permissions when they're created
@@ -185,21 +180,6 @@ fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
         path,
         std::fs::Permissions::from_mode(0o666)
     ).unwrap();
-}
-
-fn extract_project_from_sqitch_plan<P: AsRef<Path>>(path: P) -> Result<String, String> {
-    let content = match fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(err) => return Err(format!("Couldn't read sqitch plan file. Error: {}", err))
-    };
-
-    for line in content.lines() {
-        if line.starts_with("%project=") {
-            return Ok(line.trim_start_matches("%project=").trim().to_string());
-        }
-    }
-
-    Err("Couldn't find %project property in sqitch plan file".to_string())
 }
 
 fn read_scxml_file(file_path: &PathBuf) -> SCXML {
