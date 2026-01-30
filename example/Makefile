@@ -22,8 +22,6 @@ define GEN_CHARTS_QUERY
 	);
 endef
 
-# The generated files will be owned by the docker user, we need to chmod them
-# so that they can read by us
 export GEN_CHARTS_QUERY
 .PHONY: gen-charts
 gen-charts:
