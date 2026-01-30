@@ -14,15 +14,46 @@ use std::io::Read;
 pub fn deploy_scxml_files(
     source_path: &str,
     recursive: bool,
+    on_conflict_do_nothing: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let scxml_file_paths = find_scxml_file_paths(source_path, recursive).map_err(pgrx_err)?;
+
     let placeholder_project = "placeholder_project".to_string();
 
     let migrations = scxml_file_paths
         .iter()
-        .map(|file_path| {
-            let scxml = read_scxml_file(file_path)?;
+        .map(read_scxml_file)
+        .collect::<Result<Vec<SCXML>, String>>()
+        .map_err(pgrx_err)?
+        .iter()
+        .filter(|scxml| {
+            if !on_conflict_do_nothing { return true; }
 
+            /*
+             * Yes, this is vulnerable to SQL injection and yes I would have preffered to do one
+             * query to find all the existing statecharts and compare them in memory instead of
+             * doing one query .scxml file.
+             *
+             * But the semver extension has some quirks that prevents this. `1.0::semver` becomes
+             * `1.0.0` so if we get all the statechart rows with name and version then the version
+             * in the database won't be the same as the version in the file if the file version
+             * doesn't specify all three digits.
+             *
+             * Also providing arguments to Spi turns them into strings I think, but '1.0'::semver
+             * doesn't work. If it's a string then all three values are required 🤷
+             */
+            let query = format!("select not exists (select 1 from fsm.statechart where name = $1 and version = {}::semver)", &scxml.version);
+            let statechart_name = &scxml.name;
+            match Spi::get_one_with_args::<bool>(&query, &[statechart_name.into()]) {
+                Ok(Some(not_exists)) => {
+                    if !not_exists { pgrx::info!("Skipping statechart {} v{} because it's already deployed", &scxml.name, &scxml.version); }
+                    not_exists
+                },
+                Ok(None) => pgrx::error!("Impossible, received no rows from 'exists' query"),
+                Err(err) => pgrx::error!("Error looking for existing statecharts: {}", err)
+            }
+        })
+        .map(|scxml| {
             // removing transaction control with replace is a bit of a hack
             let without_transaction =
                 generate_sql_migration(&scxml, &placeholder_project)?
