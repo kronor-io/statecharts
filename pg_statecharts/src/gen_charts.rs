@@ -15,30 +15,32 @@ pub fn deploy_scxml_files(
     source_path: &str,
     recursive: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let scxml_file_paths = find_scxml_file_paths(source_path, recursive);
+    let scxml_file_paths = find_scxml_file_paths(source_path, recursive).map_err(pgrx_err)?;
     let placeholder_project = "placeholder_project".to_string();
 
     let migrations = scxml_file_paths
         .iter()
         .map(|file_path| {
-            let scxml = read_scxml_file(file_path);
+            let scxml = read_scxml_file(file_path)?;
 
             // removing transaction control with replace is a bit of a hack
-            generate_sql_migration(&scxml, &placeholder_project)
-                .deploy
-                .replace("BEGIN;", "")
-                .replace("COMMIT;", "")
+            let without_transaction =
+                generate_sql_migration(&scxml, &placeholder_project)?
+                    .deploy
+                    .replace("BEGIN;", "")
+                    .replace("COMMIT;", "");
+
+            Ok(without_transaction)
         })
-        .collect::<Vec<String>>();
+        .collect::<Result<Vec<String>, String>>()
+        .map_err(pgrx_err)?;
 
     let migration = migrations.join("\n\n");
 
     match Spi::run(&migration) {
-        Err(err) => pgrx::error!("Failed to execute migration: {}", err),
-        _ => (),
-    };
-
-    Ok(())
+        Err(err) => Err(pgrx_err(format!("Failed to deploy statecharts: {}", err))),
+        _ => Ok(()),
+    }
 }
 
 pub fn gen_statechart_sqitch_migrations(
@@ -47,18 +49,12 @@ pub fn gen_statechart_sqitch_migrations(
     recursive: bool,
     file_permission_666: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut sqitch_plan_file = {
-        let r_file =
-            std::fs::OpenOptions::new()
-                .read(true)
-                .append(true)
-                .open(sqitch_plan_file_path);
-
-        match r_file {
-            Ok(file) => file,
-            Err(err) => pgrx::error!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)
-        }
-    };
+    let mut sqitch_plan_file =
+        std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(sqitch_plan_file_path)
+            .map_err(|err| pgrx_err(format!("Failed to read sqitch plan file '{}': {}", sqitch_plan_file_path, err)))?;
 
     let sqitch_plan_string = {
         let mut buffer = String::new();
@@ -71,25 +67,27 @@ pub fn gen_statechart_sqitch_migrations(
             .lines()
             .find(|line| line.starts_with("%project="))
             .map_or_else(
-                || pgrx::error!("Couldn't find %project property in sqitch plan file"),
-                |line| line.trim_start_matches("%project=").trim().to_string()
-            );
+                || Err(pgrx_err("Couldn't find %project property in sqitch plan file".to_string())),
+                |line| Ok(line.trim_start_matches("%project=").trim().to_string())
+            )?;
 
     let sqitch_dir = Path::new(sqitch_plan_file_path).parent().unwrap();
 
     find_scxml_file_paths(source_path, recursive)
+        .map_err(pgrx_err)?
         .iter()
         .map(|file_path| {
-            let scxml = read_scxml_file(file_path);
-            let migration = generate_sql_migration(&scxml, &sqitch_project);
+            let scxml = read_scxml_file(file_path)?;
+            let migration = generate_sql_migration(&scxml, &sqitch_project)?;
 
-            (file_path, scxml, migration)
+            Ok((file_path, scxml, migration))
         })
         // collect to break laziness, we want to make sure everything parses before we create
         // migrations
-        .collect::<Vec<(&PathBuf, SCXML, Migration)>>()
+        .collect::<Result<Vec<(&PathBuf, SCXML, Migration)>, String>>()
+        .map_err(pgrx_err)?
         .iter()
-        .for_each(|(_file_path, scxml, migration)| {
+        .map(|(_file_path, scxml, migration)| {
             let migration_name = scxml.migration_name();
 
             // first we check if the migration is already present in sqitch.plan
@@ -121,14 +119,22 @@ pub fn gen_statechart_sqitch_migrations(
             let revert_path = sqitch_dir.join("revert").join(&migration_path);
             let verify_path = sqitch_dir.join("verify").join(&migration_path);
 
-            create_sqitch_file(&deploy_path, &migration.deploy, file_permission_666);
-            create_sqitch_file(&revert_path, &migration.revert, file_permission_666);
-            create_sqitch_file(&verify_path, &migration.verify, file_permission_666);
+            create_sqitch_file(&deploy_path, &migration.deploy, file_permission_666)?;
+            create_sqitch_file(&revert_path, &migration.revert, file_permission_666)?;
+            create_sqitch_file(&verify_path, &migration.verify, file_permission_666)?;
 
             pgrx::info!("created migration: {}", &migration_name);
-        });
+
+            Ok(())
+        })
+        .collect::<Result<Vec<()>, String>>()
+        .map_err(pgrx_err)?;
 
     Ok(())
+}
+
+fn pgrx_err(msg: String) -> Box<dyn std::error::Error> {
+    Box::new(std::io::Error::new(std::io::ErrorKind::Other, msg))
 }
 
 /// If file_permission_666 is set then the file and the its parent directories (that didn't already
@@ -137,12 +143,12 @@ pub fn gen_statechart_sqitch_migrations(
 ///
 /// This is because if the database is running in a container then any newly created files will be
 /// owned by the docker user and by default they won't be accessible by whatever user you are.
-fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
+fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) -> Result<(), String> {
     if !file_permission_666 {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
 
-        return;
+        return Ok(());
     }
 
     // Create parent directories as needed and give them 777 permissions when they're created
@@ -170,8 +176,7 @@ fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
         .create(true)       // Create if it doesn't exist
         .truncate(true)     // Clear existing contents if not empty
         .open(path)
-        .map_err(|err| format!("Error while creating file: {}, {}", &path.display(), err))
-        .unwrap();
+        .map_err(|err| format!("Error while creating file: {}, {}", &path.display(), err))?;
         
     file.write_all(content.as_bytes()).unwrap();
 
@@ -180,36 +185,29 @@ fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) {
         path,
         std::fs::Permissions::from_mode(0o666)
     ).unwrap();
+
+    Ok(())
 }
 
-fn read_scxml_file(file_path: &PathBuf) -> SCXML {
-    let xml_content = match fs::read_to_string(file_path) {
-        Ok(xml_content) => xml_content,
-        Err(err) => {
-            pgrx::error!("Failed to read file '{}': {}", file_path.display(), err)
-        }
-    };
+fn read_scxml_file(file_path: &PathBuf) -> Result<SCXML, String> {
+    let xml_content =
+        fs::read_to_string(file_path)
+            .map_err(|err| format!("Failed to read file '{}': {}", file_path.display(), err))?;
 
-    match from_str(&xml_content) {
-        Ok(scxml) => scxml,
-        Err(err) => pgrx::error!(
-            "Failed to parse SCXML from '{}': {}",
-            file_path.display(),
-            err
-        ),
-    }
+    from_str(&xml_content)
+        .map_err(|err| format!("Failed to parse SCXML from '{}': {}", file_path.display(), err))
 }
 
-fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Vec<PathBuf> {
+fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Result<Vec<PathBuf>, String> {
     let path = Path::new(source_path);
 
     if !path.exists() {
-        pgrx::error!("Path does not exist: {}", source_path);
+        return Err(format!("Path does not exist: {}", source_path));
     }
 
     let mut scxml_file_paths = if path.is_file() {
         if path.extension() != Some(OsStr::new("scxml")) {
-            pgrx::error!("File is not an .scxml file: {}", source_path);
+            return Err(format!("File is not an .scxml file: {}", source_path));
         }
 
         vec![path.to_path_buf()]
@@ -235,7 +233,7 @@ fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Vec<PathBuf> {
             .collect()
     } else {
         match fs::read_dir(path) {
-            Err(err) => pgrx::error!("Failed reading directory: {}, error: {}", source_path, err),
+            Err(err) => return Err(format!("Failed reading directory: {}, error: {}", source_path, err)),
             Ok(dir_content) => dir_content
                 .filter_map(|entry| entry.ok().map(|e| e.path()))
                 .filter(|path| !path.is_dir() && path.extension() == Some(OsStr::new("scxml")))
@@ -245,7 +243,7 @@ fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Vec<PathBuf> {
 
     scxml_file_paths.sort();
 
-    return scxml_file_paths;
+    return Ok(scxml_file_paths);
 }
 
 struct Migration {
@@ -254,22 +252,22 @@ struct Migration {
     verify: String,
 }
 
-fn generate_sql_migration(scxml: &SCXML, project: &String) -> Migration {
+fn generate_sql_migration(scxml: &SCXML, project: &String) -> Result<Migration, String> {
     let deploy = {
         let states_and_transitions = {
             let child_check: &dyn Fn(&String) -> bool = &|sid: &String| scxml.initial == *sid;
 
             let states = scxml
                 .states
-                .to_states_and_transitions(None, child_check);
+                .to_states_and_transitions(None, child_check)?;
 
             let final_states = scxml
                 .final_states
-                .to_states_and_transitions(None, child_check);
+                .to_states_and_transitions(None, child_check)?;
 
             let parallel_states = scxml
                 .parallel_states
-                .to_states_and_transitions(None, child_check);
+                .to_states_and_transitions(None, child_check)?;
 
             states.join(final_states).join(parallel_states)
         };
@@ -410,11 +408,11 @@ ROLLBACK;
         project, scxml.migration_name(), scxml.name, scxml.version, scxml.name, scxml.version
     );
 
-    return Migration {
+    return Ok(Migration {
         deploy,
         revert,
         verify,
-    };
+    });
 }
 
 // SQL SCXML representation
@@ -462,7 +460,7 @@ trait ToStatesAndTransitions {
         &self,
         parent_id: Option<String>,
         is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions;
+    ) -> Result<SqlStatesAndTransitions, String>;
 }
 
 impl ToStatesAndTransitions for State {
@@ -470,7 +468,7 @@ impl ToStatesAndTransitions for State {
         &self,
         parent_id: Option<String>,
         is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions
+    ) -> Result<SqlStatesAndTransitions, String>
     {
         let this_state = SqlScxmlState {
             id: self.id.clone(),
@@ -508,7 +506,7 @@ impl ToStatesAndTransitions for State {
 
         let transitions = self
             .transitions
-            .to_states_and_transitions(Some(self.id.clone()), is_initial_state);
+            .to_states_and_transitions(Some(self.id.clone()), is_initial_state)?;
 
         let child_states = {
             let maybe_children_initial_id = self
@@ -530,23 +528,23 @@ impl ToStatesAndTransitions for State {
                     let child_states = self.child_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     let child_final_states = self.child_final_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     child_states.join(child_final_states).join(child_parallel_states)
                 }
                 (None, true) => SqlStatesAndTransitions::new(),
                 (None, false) => {
-                    pgrx::error!("state {} has child states but not initial", self.id)
+                    return Err(format!("state {} has child states but not initial", self.id));
                 }
             }
         };
@@ -554,7 +552,7 @@ impl ToStatesAndTransitions for State {
         let mut result = SqlStatesAndTransitions::new();
         result.states = vec![this_state];
 
-        return result.join(transitions).join(child_states);
+        return Ok(result.join(transitions).join(child_states));
     }
 }
 
@@ -563,7 +561,7 @@ impl ToStatesAndTransitions for FinalState {
         &self,
         parent_id: Option<String>,
         is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions
+    ) -> Result<SqlStatesAndTransitions, String>
 
     {
         let this_state = SqlScxmlState {
@@ -608,23 +606,23 @@ impl ToStatesAndTransitions for FinalState {
                     let child_states = self.child_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     let child_final_states = self.child_final_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
                         Some(self.id.clone()),
                         child_check,
-                    );
+                    )?;
 
                     child_states.join(child_final_states).join(child_parallel_states)
                 }
                 (None, true) => SqlStatesAndTransitions::new(),
                 (None, false) => {
-                    pgrx::error!("state {} has child states but not initial", self.id)
+                    return Err(format!("state {} has child states but not initial", self.id))
                 }
             }
         };
@@ -632,7 +630,7 @@ impl ToStatesAndTransitions for FinalState {
         let mut result = SqlStatesAndTransitions::new();
         result.states = vec![this_state];
 
-        return result.join(child_states);
+        return Ok(result.join(child_states));
     }
 }
 
@@ -641,7 +639,7 @@ impl ToStatesAndTransitions for ParallelState {
         &self,
         parent_id: Option<String>,
         is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions
+    ) -> Result<SqlStatesAndTransitions, String>
 
     {
         let this_state = SqlScxmlState {
@@ -680,7 +678,7 @@ impl ToStatesAndTransitions for ParallelState {
 
         let transitions = self
             .transitions
-            .to_states_and_transitions(Some(self.id.clone()), is_initial_state);
+            .to_states_and_transitions(Some(self.id.clone()), is_initial_state)?;
 
         let child_states = {
             let child_check: &dyn Fn(&String) -> bool = &|_: &String| true;
@@ -688,12 +686,12 @@ impl ToStatesAndTransitions for ParallelState {
             let child_states = self.child_states.to_states_and_transitions(
                 Some(self.id.clone()),
                 child_check,
-            );
+            )?;
 
             let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
                 Some(self.id.clone()),
                 child_check,
-            );
+            )?;
 
             child_states.join(child_parallel_states)
         };
@@ -701,7 +699,7 @@ impl ToStatesAndTransitions for ParallelState {
         let mut result = SqlStatesAndTransitions::new();
         result.states = vec![this_state];
 
-        return result.join(transitions).join(child_states);
+        return Ok(result.join(transitions).join(child_states));
     }
 }
 
@@ -710,11 +708,11 @@ impl ToStatesAndTransitions for Transition {
         &self,
         parent_id: Option<String>,
         _is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions
+    ) -> Result<SqlStatesAndTransitions, String>
 
     {
         let transition = match parent_id {
-            None => pgrx::error!("Can't have transition without parent_id"),
+            None => return Err(format!("Can't have transition without parent_id")),
             Some(some_parent_id) => SqlScxmlTransition {
                 event: self.event.clone(),
                 source_state: some_parent_id.clone(),
@@ -725,7 +723,7 @@ impl ToStatesAndTransitions for Transition {
         let mut result = SqlStatesAndTransitions::new();
         result.transitions = vec![transition];
 
-        return result;
+        return Ok(result);
     }
 }
 
@@ -737,18 +735,17 @@ where
         &self,
         parent_id: Option<String>,
         is_initial_state: &dyn Fn(&String) -> bool,
-    ) -> SqlStatesAndTransitions
+    ) -> Result<SqlStatesAndTransitions, String>
 
     {
         let mut result = SqlStatesAndTransitions::new();
 
         for item in self.iter() {
-            let item_result =
-                item.to_states_and_transitions(parent_id.clone(), is_initial_state);
+            let item_result = item.to_states_and_transitions(parent_id.clone(), is_initial_state)?;
             result = result.join(item_result);
         }
 
-        result
+        Ok(result)
     }
 }
 
