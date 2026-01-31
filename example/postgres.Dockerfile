@@ -1,8 +1,7 @@
-FROM postgres:18
+FROM postgres:18 AS builder
 
 RUN apt-get -qq update \
   && apt-get -qq --no-install-recommends install \
-  sqitch \
   # needed by the semver extension
   make gcc postgresql-server-dev-18 \
   pgxnclient \
@@ -28,3 +27,13 @@ RUN cargo pgrx install \
   --no-default-features \
   --release \
   --pg-config /usr/bin/pg_config
+
+# Multi stage build to bring down image size
+FROM postgres:18
+
+COPY --from=builder /usr/lib/postgresql/ /usr/lib/postgresql
+COPY --from=builder /usr/share/postgresql/ /usr/share/postgresql
+
+RUN apt-get -qq update \
+  && apt-get -qq --no-install-recommends install \
+  sqitch \
