@@ -51,12 +51,12 @@ mod fsm {
 
     // functions to load .scxml files into the database
     #[pg_extern(requires = ["state_machine_event"])]
-    pub fn deploy_scxml_files(
+    pub fn import_scxml_files(
         source_path: &str,
         recursive: default!(bool, false),
         on_conflict_do_nothing: default!(bool, false)
     ) -> Result<(), Box<dyn std::error::Error>> {
-        gen_charts::deploy_scxml_files(source_path, recursive, on_conflict_do_nothing)
+        gen_charts::import_scxml_files(source_path, recursive, on_conflict_do_nothing)
     }
 
     #[pg_extern(requires = ["state_machine_event"])]

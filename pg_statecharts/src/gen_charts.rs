@@ -11,7 +11,7 @@ use std::io::Write;
 use std::os::unix::fs::{PermissionsExt};
 use std::io::Read;
 
-pub fn deploy_scxml_files(
+pub fn import_scxml_files(
     source_path: &str,
     recursive: bool,
     on_conflict_do_nothing: bool,
