@@ -12,7 +12,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
     hackage-nix.url = "github:kronor-io/hackage.nix";
     hackage-nix.flake = false;
-    rust-overlay.url = "github:oxalica/rust-overlay"; # Add this
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
   outputs =
     { self
@@ -20,7 +20,7 @@
     , haskell-nix
     , hackage-nix
     , nixpkgs
-    , rust-overlay  # Add this
+    , rust-overlay
     }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
