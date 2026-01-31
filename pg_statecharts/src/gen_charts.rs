@@ -30,9 +30,9 @@ pub fn deploy_scxml_files(
             if !on_conflict_do_nothing { return true; }
 
             /*
-             * Yes, this is vulnerable to SQL injection and yes I would have preffered to do one
+             * Yes, this is vulnerable to SQL injection and yes, I would have preffered to do one
              * query to find all the existing statecharts and compare them in memory instead of
-             * doing one query .scxml file.
+             * doing one query per .scxml file.
              *
              * But the semver extension has some quirks that prevents this. `1.0::semver` becomes
              * `1.0.0` so if we get all the statechart rows with name and version then the version
@@ -111,18 +111,18 @@ pub fn gen_statechart_sqitch_migrations(
             let scxml = read_scxml_file(file_path)?;
             let migration = generate_sql_migration(&scxml, &sqitch_project)?;
 
-            Ok((file_path, scxml, migration))
+            Ok((scxml, migration))
         })
         // collect to break laziness, we want to make sure everything parses before we create
         // migrations
-        .collect::<Result<Vec<(&PathBuf, SCXML, Migration)>, String>>()
+        .collect::<Result<Vec<(SCXML, Migration)>, String>>()
         .map_err(pgrx_err)?
         .iter()
-        .map(|(_file_path, scxml, migration)| {
+        .map(|(scxml, migration)| {
             let migration_name = scxml.migration_name();
 
             // first we check if the migration is already present in sqitch.plan
-            {
+            let new_migration = {
                 let migration_regex = {
                     let escaped_name = regex::escape(&migration_name);
                     let pattern = format!(r"^{}\b", escaped_name);
@@ -137,8 +137,12 @@ pub fn gen_statechart_sqitch_migrations(
                     );
 
                     std::io::Write::write_all(&mut sqitch_plan_file, migration_line.as_bytes()).unwrap();
+
+                    true
+                } else {
+                    false
                 }
-            }
+            };
 
             // now we generate the contents of the migration
             let migration_path = format!(
@@ -154,7 +158,11 @@ pub fn gen_statechart_sqitch_migrations(
             create_sqitch_file(&revert_path, &migration.revert, file_permission_666)?;
             create_sqitch_file(&verify_path, &migration.verify, file_permission_666)?;
 
-            pgrx::info!("created migration: {}", &migration_name);
+            if new_migration {
+                pgrx::info!("created new migration: {}", &migration_name);
+            } else {
+                pgrx::info!("updated existing migration: {}", &migration_name);
+            }
 
             Ok(())
         })
@@ -198,7 +206,7 @@ fn create_sqitch_file(path: &Path, content: &str, file_permission_666: bool) -> 
         for dir in dirs_to_create.iter().rev() {
             fs::create_dir(dir).unwrap();
             let perms = fs::Permissions::from_mode(0o777);
-            fs::set_permissions(dir, perms).map_err(|err| format!("Error while setting dir permissions: {}", err)).unwrap();
+            fs::set_permissions(dir, perms).map_err(|err| format!("Error while setting dir permissions: {}", err))?;
         }
     }
 
@@ -226,7 +234,7 @@ fn read_scxml_file(file_path: &PathBuf) -> Result<SCXML, String> {
             .map_err(|err| format!("Failed to read file '{}': {}", file_path.display(), err))?;
 
     from_str(&xml_content)
-        .map_err(|err| format!("Failed to parse SCXML from '{}': {}", file_path.display(), err))
+        .map_err(|err| format!("Failed to parse SCXML in '{}': {}", file_path.display(), err))
 }
 
 fn find_scxml_file_paths(source_path: &str, recursive: bool) -> Result<Vec<PathBuf>, String> {
@@ -547,11 +555,11 @@ impl ToStatesAndTransitions for State {
                 .flatten()
                 .map(|t| t.target.clone());
 
-            // If there are child states then we also need to have an initial state for this child
+            // If there are child states then we also need to have an initial state for the child
             // states
             match (
                 maybe_children_initial_id,
-                self.child_states.is_empty() && self.child_final_states.is_empty(),
+                self.child_states.is_empty() && self.child_final_states.is_empty() && self.child_parallel_states.is_empty(),
             ) {
                 (Some(children_initial_id), _) => {
                     let child_check: &dyn Fn(&String) -> bool = &|sid: &String| children_initial_id == *sid;
@@ -625,11 +633,11 @@ impl ToStatesAndTransitions for FinalState {
                 .flatten()
                 .map(|t| t.target.clone());
 
-            // If there are child states then we also need to have an initial state for this child
+            // If there are child states then we also need to have an initial state for the child
             // states
             match (
                 maybe_children_initial_id,
-                self.child_states.is_empty() && self.child_final_states.is_empty(),
+                self.child_states.is_empty() && self.child_final_states.is_empty() && self.child_parallel_states.is_empty(),
             ) {
                 (Some(children_initial_id), _) => {
                     let child_check: &dyn Fn(&String) -> bool = &|sid: &String| children_initial_id == *sid;

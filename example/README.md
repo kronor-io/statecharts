@@ -29,10 +29,9 @@ ok
 $
 $
 $ make gen-charts
-sudo chmod -R 666 sqitch/sqitch.plan
-[sudo] password for axel:
+sudo chmod 666 sqitch/sqitch.plan
 docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$GEN_CHARTS_QUERY"
-INFO:  created migration: statechart/lightswitch_flow-1.0
+INFO:  created new migration: statechart/lightswitch_flow-1.0
  gen_statechart_sqitch_migrations
 ----------------------------------
 
