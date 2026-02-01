@@ -293,23 +293,11 @@ struct Migration {
 
 fn generate_sql_migration(scxml: &SCXML, project: &String) -> Result<Migration, String> {
     let deploy = {
-        let states_and_transitions = {
-            let child_check: &dyn Fn(&String) -> bool = &|sid: &String| scxml.initial == *sid;
-
-            let states = scxml
-                .states
-                .to_states_and_transitions(None, child_check)?;
-
-            let final_states = scxml
-                .final_states
-                .to_states_and_transitions(None, child_check)?;
-
-            let parallel_states = scxml
-                .parallel_states
-                .to_states_and_transitions(None, child_check)?;
-
-            states.join(final_states).join(parallel_states)
-        };
+        let states_and_transitions =
+            scxml.states.to_states_and_transitions(
+                None,
+                &|sid: &String| scxml.initial == *sid
+            )?;
 
         // state rows
         let state_rows = states_and_transitions
@@ -559,28 +547,13 @@ impl ToStatesAndTransitions for State {
             // states
             match (
                 maybe_children_initial_id,
-                self.child_states.is_empty() && self.child_final_states.is_empty() && self.child_parallel_states.is_empty(),
+                self.child_states.is_empty()
             ) {
-                (Some(children_initial_id), _) => {
-                    let child_check: &dyn Fn(&String) -> bool = &|sid: &String| children_initial_id == *sid;
-
-                    let child_states = self.child_states.to_states_and_transitions(
+                (Some(children_initial_id), _) =>
+                    self.child_states.to_states_and_transitions(
                         Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    let child_final_states = self.child_final_states.to_states_and_transitions(
-                        Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
-                        Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    child_states.join(child_final_states).join(child_parallel_states)
-                }
+                        &|sid: &String| children_initial_id == *sid
+                    )?,
                 (None, true) => SqlStatesAndTransitions::new(),
                 (None, false) => {
                     return Err(format!("state {} has child states but not initial", self.id));
@@ -637,28 +610,13 @@ impl ToStatesAndTransitions for FinalState {
             // states
             match (
                 maybe_children_initial_id,
-                self.child_states.is_empty() && self.child_final_states.is_empty() && self.child_parallel_states.is_empty(),
+                self.child_states.is_empty()
             ) {
-                (Some(children_initial_id), _) => {
-                    let child_check: &dyn Fn(&String) -> bool = &|sid: &String| children_initial_id == *sid;
-
-                    let child_states = self.child_states.to_states_and_transitions(
+                (Some(children_initial_id), _) =>
+                    self.child_states.to_states_and_transitions(
                         Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    let child_final_states = self.child_final_states.to_states_and_transitions(
-                        Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
-                        Some(self.id.clone()),
-                        child_check,
-                    )?;
-
-                    child_states.join(child_final_states).join(child_parallel_states)
-                }
+                        &|sid: &String| children_initial_id == *sid,
+                    )?,
                 (None, true) => SqlStatesAndTransitions::new(),
                 (None, false) => {
                     return Err(format!("state {} has child states but not initial", self.id))
@@ -719,21 +677,11 @@ impl ToStatesAndTransitions for ParallelState {
             .transitions
             .to_states_and_transitions(Some(self.id.clone()), is_initial_state)?;
 
-        let child_states = {
-            let child_check: &dyn Fn(&String) -> bool = &|_: &String| true;
-
-            let child_states = self.child_states.to_states_and_transitions(
+        let child_states =
+            self.child_states.to_states_and_transitions(
                 Some(self.id.clone()),
-                child_check,
+                &|_: &String| true,
             )?;
-
-            let child_parallel_states = self.child_parallel_states.to_states_and_transitions(
-                Some(self.id.clone()),
-                child_check,
-            )?;
-
-            child_states.join(child_parallel_states)
-        };
 
         let mut result = SqlStatesAndTransitions::new();
         result.states = vec![this_state];
@@ -742,13 +690,40 @@ impl ToStatesAndTransitions for ParallelState {
     }
 }
 
+impl ToStatesAndTransitions for AbstractState {
+    fn to_states_and_transitions(
+        &self,
+        parent_id: Option<String>,
+        is_initial_state: &dyn Fn(&String) -> bool,
+    ) -> Result<SqlStatesAndTransitions, String> {
+        match self {
+            AbstractState::State(state) => state.to_states_and_transitions(parent_id, is_initial_state),
+            AbstractState::Final(state) => state.to_states_and_transitions(parent_id, is_initial_state),
+            AbstractState::Parallel(state) => state.to_states_and_transitions(parent_id, is_initial_state)
+        }
+    }
+}
+
+impl ToStatesAndTransitions for AbstractStateWithoutFinal {
+    fn to_states_and_transitions(
+        &self,
+        parent_id: Option<String>,
+        is_initial_state: &dyn Fn(&String) -> bool,
+    ) -> Result<SqlStatesAndTransitions, String> {
+        match self {
+            AbstractStateWithoutFinal::State(state) => state.to_states_and_transitions(parent_id, is_initial_state),
+            AbstractStateWithoutFinal::Parallel(state) => state.to_states_and_transitions(parent_id, is_initial_state)
+        }
+    }
+}
+
+
 impl ToStatesAndTransitions for Transition {
     fn to_states_and_transitions(
         &self,
         parent_id: Option<String>,
         _is_initial_state: &dyn Fn(&String) -> bool,
     ) -> Result<SqlStatesAndTransitions, String>
-
     {
         let transition = match parent_id {
             None => return Err(format!("Can't have transition without parent_id")),
@@ -794,7 +769,7 @@ pub struct SCXML {
     #[serde(rename = "@xmlns")]
     pub xmlns: String,
 
-    #[serde(rename = "@name")]
+    #[serde(rename = "@name", default)]
     pub name: String,
 
     #[serde(rename = "@version")]
@@ -803,14 +778,8 @@ pub struct SCXML {
     #[serde(rename = "@initial")]
     pub initial: String,
 
-    #[serde(rename = "state", default)]
-    pub states: Vec<State>,
-
-    #[serde(rename = "final", default)]
-    pub final_states: Vec<FinalState>,
-
-    #[serde(rename = "parallel", default)]
-    pub parallel_states: Vec<ParallelState>,
+    #[serde(rename = "$value", default)]
+    pub states: Vec<AbstractState>,
 }
 
 impl SCXML {
@@ -824,11 +793,26 @@ impl SCXML {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AbstractState {
+    State(State),
+    Final(FinalState),
+    Parallel(ParallelState),
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AbstractStateWithoutFinal {
+    State(State),
+    Parallel(ParallelState),
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct State {
     #[serde(rename = "@id")]
     pub id: String,
 
-    #[serde(rename = "@name")]
+    #[serde(rename = "@name", default)]
     pub name: String,
 
     #[serde(rename = "transition", default)]
@@ -840,14 +824,8 @@ pub struct State {
     #[serde(rename = "onexit", default)]
     pub on_exit: Vec<OnExit>,
 
-    #[serde(rename = "state", default)]
-    pub child_states: Vec<State>,
-
-    #[serde(rename = "final", default)]
-    pub child_final_states: Vec<FinalState>,
-
-    #[serde(rename = "parallel", default)]
-    pub child_parallel_states: Vec<ParallelState>,
+    #[serde(rename = "$value", default)]
+    pub child_states: Vec<AbstractState>,
 
     #[serde(rename = "initial", default)]
     pub initial: Option<Initial>,
@@ -870,20 +848,14 @@ pub struct FinalState {
     #[serde(rename = "@id")]
     pub id: String,
 
-    #[serde(rename = "@name")]
+    #[serde(rename = "@name", default)]
     pub name: String,
 
     #[serde(rename = "onentry", default)]
     pub on_entry: Vec<OnEntry>,
 
-    #[serde(rename = "state", default)]
-    pub child_states: Vec<State>,
-
-    #[serde(rename = "final", default)]
-    pub child_final_states: Vec<FinalState>,
-
-    #[serde(rename = "parallel", default)]
-    pub child_parallel_states: Vec<ParallelState>,
+    #[serde(rename = "$value", default)]
+    pub child_states: Vec<AbstractState>,
 
     #[serde(rename = "initial", default)]
     pub initial: Option<Initial>,
@@ -894,7 +866,7 @@ pub struct ParallelState {
     #[serde(rename = "@id")]
     pub id: String,
 
-    #[serde(rename = "@name")]
+    #[serde(rename = "@name", default)]
     pub name: String,
 
     #[serde(rename = "transition", default)]
@@ -906,11 +878,8 @@ pub struct ParallelState {
     #[serde(rename = "onexit", default)]
     pub on_exit: Vec<OnExit>,
 
-    #[serde(rename = "state", default)]
-    pub child_states: Vec<State>,
-
-    #[serde(rename = "parallel", default)]
-    pub child_parallel_states: Vec<ParallelState>,
+    #[serde(rename = "$value", default)]
+    pub child_states: Vec<AbstractStateWithoutFinal>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
