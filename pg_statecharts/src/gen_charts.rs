@@ -16,62 +16,134 @@ pub fn import_scxml_files(
     recursive: bool,
     on_conflict_do_nothing: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let scxml_file_paths = find_scxml_file_paths(source_path, recursive).map_err(pgrx_err)?;
-
-    let placeholder_project = "placeholder_project".to_string();
-
-    let migrations = scxml_file_paths
+    // Executing with connection client means that it's all done in one transaction
+    Spi::connect_mut(|client| {
+        find_scxml_file_paths(source_path, recursive)
+        .map_err(pgrx_err)?
         .iter()
         .map(read_scxml_file)
         .collect::<Result<Vec<SCXML>, String>>()
         .map_err(pgrx_err)?
         .iter()
-        .filter(|scxml| {
-            if !on_conflict_do_nothing { return true; }
+        .map(|scxml| {
+            let states_and_transitions = scxml
+                .states
+                .to_states_and_transitions(None, &|sid: &String| scxml.initial == *sid)?;
 
-            /*
-             * Yes, this is vulnerable to SQL injection and yes, I would have preffered to do one
-             * query to find all the existing statecharts and compare them in memory instead of
-             * doing one query per .scxml file.
-             *
-             * But the semver extension has some quirks that prevents this. `1.0::semver` becomes
-             * `1.0.0` so if we get all the statechart rows with name and version then the version
-             * in the database won't be the same as the version in the file if the file version
-             * doesn't specify all three digits.
-             *
-             * Also providing arguments to Spi turns them into strings I think, but '1.0'::semver
-             * doesn't work. If it's a string then all three values are required 🤷
-             */
-            let query = format!("select not exists (select 1 from fsm.statechart where name = $1 and version = {}::semver)", &scxml.version);
-            let statechart_name = &scxml.name;
-            match Spi::get_one_with_args::<bool>(&query, &[statechart_name.into()]) {
-                Ok(Some(not_exists)) => {
-                    if !not_exists { pgrx::info!("Skipping statechart {} v{} because it's already deployed", &scxml.name, &scxml.version); }
-                    not_exists
-                },
-                Ok(None) => pgrx::error!("Impossible, received no rows from 'exists' query"),
-                Err(err) => pgrx::error!("Error looking for existing statecharts: {}", err)
+            let state_ids = states_and_transitions
+                .states
+                .iter()
+                .map(|s| s.id.clone())
+                .collect::<Vec<String>>();
+
+            let state_names = states_and_transitions
+                .states
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<String>>();
+
+            let state_parent_ids = states_and_transitions
+                .states
+                .iter()
+                .map(|s| s.parent_id.clone())
+                .collect::<Vec<Option<String>>>();
+
+            let state_is_initials = states_and_transitions
+                .states
+                .iter()
+                .map(|s| s.is_initial)
+                .collect::<Vec<bool>>();
+
+            let state_is_finals = states_and_transitions
+                .states
+                .iter()
+                .map(|s| s.is_final)
+                .collect::<Vec<bool>>();
+
+            let state_on_entrys = states_and_transitions
+                .states
+                .iter()
+                // double curly brace escapes the curly brace, so we need triple curly brace
+                .map(|s| format!("{{{}}}", s.on_entry.iter().map(|(schema, name)| format!("\"({},{})\"", schema, name)).collect::<Vec<String>>().join(",")))
+                .collect::<Vec<String>>();
+
+            let state_on_exits = states_and_transitions
+                .states
+                .iter()
+                // double curly brace escapes the curly brace, so we need triple curly brace
+                .map(|s| format!("{{{}}}", s.on_exit.iter().map(|(schema, name)| format!("\"({},{})\"", schema, name)).collect::<Vec<String>>().join(",")))
+                .collect::<Vec<String>>();
+
+            let transition_events = states_and_transitions
+                .transitions
+                .iter()
+                .map(|t| t.event.clone())
+                .collect::<Vec<String>>();
+
+            let transition_source_states = states_and_transitions
+                .transitions
+                .iter()
+                .map(|t| t.source_state.clone())
+                .collect::<Vec<String>>();
+
+            let transition_target_states = states_and_transitions
+                .transitions
+                .iter()
+                .map(|t| t.target_state.clone())
+                .collect::<Vec<String>>();
+
+            let query =
+                format!(
+                r#"
+                with
+                    statechart as (
+                        insert into fsm.statechart (name, version) values ($1, $2::semver)
+                        {}
+                        returning id
+                    ),
+
+                    states as (
+                        insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit)
+                        select statechart.id, state.id, state.name, state.parent_id, state.is_initial, state.is_final, state.on_entry::fsm_callback_name[], state.on_exit::fsm_callback_name[]
+                        from unnest($3, $4, $5, $6, $7, $8, $9) as state(id, name, parent_id, is_initial, is_final, on_entry, on_exit)
+                        cross join statechart
+                    )
+
+                    insert into fsm.transition (statechart_id, event, source_state, target_state)
+                    select statechart.id, transition.event, transition.source_state, transition.target_state
+                    from unnest($10, $11, $12) as transition(event, source_state, target_state)
+                    cross join statechart
+              "#,
+                if on_conflict_do_nothing { "on conflict do nothing" } else { "" }
+                );
+
+            match client.update(
+                &query,
+                None,
+                &[
+                    scxml.name.clone().into(),
+                    scxml.version.clone().into(),
+                    // state stuff
+                    state_ids.into(),
+                    state_names.into(),
+                    state_parent_ids.into(),
+                    state_is_initials.into(),
+                    state_is_finals.into(),
+                    state_on_entrys.into(),
+                    state_on_exits.into(),
+                    // transition stuff
+                    transition_events.into(),
+                    transition_source_states.into(),
+                    transition_target_states.into()
+                ],
+            ) {
+                Ok(_) => Ok(()),
+                Err(err) => Err(format!("Failed to deploy statechart: {}", err)),
             }
         })
-        .map(|scxml| {
-            // removing transaction control with replace is a bit of a hack
-            let without_transaction =
-                generate_sql_migration(&scxml, &placeholder_project)?
-                    .deploy
-                    .replace("BEGIN;", "")
-                    .replace("COMMIT;", "");
-
-            Ok(without_transaction)
-        })
-        .collect::<Result<Vec<String>, String>>()
-        .map_err(pgrx_err)?;
-
-    let migration = migrations.join("\n\n");
-
-    match Spi::run(&migration) {
-        Err(err) => Err(pgrx_err(format!("Failed to deploy statecharts: {}", err))),
-        _ => Ok(()),
-    }
+        .collect::<Result<(), String>>()
+        .map_err(pgrx_err)
+    })
 }
 
 pub fn gen_statechart_sqitch_migrations(

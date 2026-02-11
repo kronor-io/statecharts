@@ -1,6 +1,6 @@
 <scxml xmlns="http://www.w3.org/2005/07/scxml"
               name="lightswitch_flow"
-              version="1.0"
+              version="1.0.0"
               initial="off">
 
   <state id="off" name="OFF">
