@@ -89,3 +89,16 @@ create operator class semver_hash_ops
 create cast (text as semver)
 with function semver_from_text(text)
 as implicit;
+
+create or replace function to_semver(text_semver text)
+  returns semver as
+  $$
+  declare
+    dot_count integer;
+  begin
+    dot_count := length(text_semver) - length(replace(text_semver, '.', ''));
+
+    -- pads with '.0' if the provided value has fewer than two dots
+    return (text_semver || repeat('.0', 2 - dot_count))::semver;
+  end;
+  $$ language plpgsql;

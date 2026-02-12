@@ -97,7 +97,7 @@ pub fn import_scxml_files(
                 r#"
                 with
                     statechart as (
-                        insert into fsm.statechart (name, version) values ($1, $2::semver)
+                        insert into fsm.statechart (name, version) values ($1, to_semver($2))
                         {}
                         returning id
                     ),
