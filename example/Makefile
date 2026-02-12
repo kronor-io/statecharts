@@ -18,6 +18,7 @@ define GEN_CHARTS_QUERY
 	select fsm.gen_statechart_sqitch_migrations(
 		source_path => '/repo/statecharts',
 		sqitch_plan_file_path => '/repo/sqitch/sqitch.plan',
+		recursive => false,
 		file_permission_666 => true
 	);
 endef
@@ -27,4 +28,17 @@ export GEN_CHARTS_QUERY
 gen-charts:
 	sudo chmod 666 sqitch/sqitch.plan
 	docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$$GEN_CHARTS_QUERY"
+
+define IMPORT_CHARTS_QUERY
+	select fsm.import_scxml_files(
+		source_path => '/repo/statecharts',
+		recursive => false,
+		on_conflict_do_nothing => false
+	);
+endef
+
+export IMPORT_CHARTS_QUERY
+.PHONY: import-charts
+import-charts:
+	docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$$IMPORT_CHARTS_QUERY"
 
