@@ -1,5 +1,6 @@
 use chrono::Utc;
 use pgrx::*;
+use pgrx::datum::TimestampWithTimeZone;
 use pgrx::iter::TableIterator;
 use quick_xml::de::from_str;
 use regex::Regex;
@@ -16,7 +17,7 @@ pub fn import_scxml_files(
     source_path: &str,
     recursive: bool,
     on_conflict_do_nothing: bool,
-) -> Result<TableIterator<'static, (name!(name, Option<String>), name!(version, Option<String>))>, Box<dyn std::error::Error>> {
+) -> Result<TableIterator<'static, (name!(id, i64), name!(created_at, TimestampWithTimeZone), name!(name, String), name!(version, String))>, Box<dyn std::error::Error>> {
     // Executing with connection client means that it's all done in one transaction
     Spi::connect_mut(|client| {
         find_scxml_file_paths(source_path, recursive)
@@ -100,7 +101,7 @@ pub fn import_scxml_files(
                     statechart as (
                         insert into fsm.statechart (name, version) values ($1, to_semver($2))
                         {}
-                        returning id, name, version
+                        returning *
                     ),
 
                     states as (
@@ -117,7 +118,7 @@ pub fn import_scxml_files(
                         cross join statechart
                     )
 
-                    select name, version::text
+                    select id, created_at, name, version::text
                     from statechart
               "#,
                 if on_conflict_do_nothing { "on conflict do nothing" } else { "" }
@@ -148,21 +149,23 @@ pub fn import_scxml_files(
                     let names_and_versions =
                         rows
                             .map(|row| {
+                                let id = row["id"].value::<i64>()?;
+                                let created_at = row["created_at"].value::<TimestampWithTimeZone>()?;
                                 let name = row["name"].value::<String>()?;
                                 let version = row["version"].value::<String>()?;
 
-                                Ok((name, version))
+                                Ok((id.unwrap(), created_at.unwrap(), name.unwrap(), version.unwrap()))
                             })
-                            .collect::<Result<Vec<(Option<String>, Option<String>)>, spi::Error>>()
+                            .collect::<Result<Vec<(i64, TimestampWithTimeZone, String, String)>, spi::Error>>()
                             .map_err(|err| format!("err reading output: {}", err))?;
 
                     Ok(names_and_versions)
                 },
             }
         })
-        .collect::<Result<Vec<Vec<(Option<String>, Option<String>)>>, String>>()
+        .collect::<Result<Vec<Vec<(i64, TimestampWithTimeZone, String, String)>>, String>>()
         .map(|rows_of_rows| {
-            let rows = rows_of_rows.into_iter().flatten().collect::<Vec<(Option<String>, Option<String>)>>();
+            let rows = rows_of_rows.into_iter().flatten().collect::<Vec<(i64, TimestampWithTimeZone, String, String)>>();
             TableIterator::new(rows)
         })
         .map_err(pgrx_err)

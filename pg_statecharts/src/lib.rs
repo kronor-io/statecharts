@@ -8,6 +8,7 @@ mod fsm {
     use crate::gen_charts;
 
     use pgrx::*;
+    use pgrx::datum::TimestampWithTimeZone;
     use pgrx::iter::TableIterator;
 
     /*
@@ -118,7 +119,7 @@ mod fsm {
         source_path: &str,
         recursive: default!(bool, false),
         on_conflict_do_nothing: default!(bool, false),
-    ) -> Result<TableIterator<'static, (name!(name, Option<String>), name!(version, Option<String>))>, Box<dyn std::error::Error>> {
+    ) -> Result<TableIterator<'static, (name!(id, i64), name!(created_at, TimestampWithTimeZone), name!(name, String), name!(version, String))>, Box<dyn std::error::Error>> {
         gen_charts::import_scxml_files(source_path, recursive, on_conflict_do_nothing)
     }
 
