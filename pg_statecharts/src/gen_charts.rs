@@ -1,5 +1,6 @@
 use chrono::Utc;
 use pgrx::*;
+use pgrx::iter::TableIterator;
 use quick_xml::de::from_str;
 use regex::Regex;
 use serde::Deserialize;
@@ -15,7 +16,7 @@ pub fn import_scxml_files(
     source_path: &str,
     recursive: bool,
     on_conflict_do_nothing: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<TableIterator<'static, (name!(name, Option<String>), name!(version, Option<String>))>, Box<dyn std::error::Error>> {
     // Executing with connection client means that it's all done in one transaction
     Spi::connect_mut(|client| {
         find_scxml_file_paths(source_path, recursive)
@@ -99,7 +100,7 @@ pub fn import_scxml_files(
                     statechart as (
                         insert into fsm.statechart (name, version) values ($1, to_semver($2))
                         {}
-                        returning id
+                        returning id, name, version
                     ),
 
                     states as (
@@ -107,12 +108,17 @@ pub fn import_scxml_files(
                         select statechart.id, state.id, state.name, state.parent_id, state.is_initial, state.is_final, state.on_entry::fsm_callback_name[], state.on_exit::fsm_callback_name[]
                         from unnest($3, $4, $5, $6, $7, $8, $9) as state(id, name, parent_id, is_initial, is_final, on_entry, on_exit)
                         cross join statechart
+                    ),
+
+                    transitions as (
+                        insert into fsm.transition (statechart_id, event, source_state, target_state)
+                        select statechart.id, transition.event, transition.source_state, transition.target_state
+                        from unnest($10, $11, $12) as transition(event, source_state, target_state)
+                        cross join statechart
                     )
 
-                    insert into fsm.transition (statechart_id, event, source_state, target_state)
-                    select statechart.id, transition.event, transition.source_state, transition.target_state
-                    from unnest($10, $11, $12) as transition(event, source_state, target_state)
-                    cross join statechart
+                    select name, version::text
+                    from statechart
               "#,
                 if on_conflict_do_nothing { "on conflict do nothing" } else { "" }
                 );
@@ -137,11 +143,28 @@ pub fn import_scxml_files(
                     transition_target_states.into()
                 ],
             ) {
-                Ok(_) => Ok(()),
                 Err(err) => Err(format!("Failed to deploy statechart: {}", err)),
+                Ok(rows) => {
+                    let names_and_versions =
+                        rows
+                            .map(|row| {
+                                let name = row["name"].value::<String>()?;
+                                let version = row["version"].value::<String>()?;
+
+                                Ok((name, version))
+                            })
+                            .collect::<Result<Vec<(Option<String>, Option<String>)>, spi::Error>>()
+                            .map_err(|err| format!("err reading output: {}", err))?;
+
+                    Ok(names_and_versions)
+                },
             }
         })
-        .collect::<Result<(), String>>()
+        .collect::<Result<Vec<Vec<(Option<String>, Option<String>)>>, String>>()
+        .map(|rows_of_rows| {
+            let rows = rows_of_rows.into_iter().flatten().collect::<Vec<(Option<String>, Option<String>)>>();
+            TableIterator::new(rows)
+        })
         .map_err(pgrx_err)
     })
 }

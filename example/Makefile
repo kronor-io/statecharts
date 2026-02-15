@@ -30,7 +30,7 @@ gen-charts:
 	docker compose exec db psql postgres://postgres:postgres@localhost:5432/postgres -c "$$GEN_CHARTS_QUERY"
 
 define IMPORT_CHARTS_QUERY
-	select fsm.import_scxml_files(
+	select * from fsm.import_scxml_files(
 		source_path => '/repo/statecharts',
 		recursive => false,
 		on_conflict_do_nothing => false

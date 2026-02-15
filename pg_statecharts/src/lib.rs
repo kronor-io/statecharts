@@ -8,6 +8,7 @@ mod fsm {
     use crate::gen_charts;
 
     use pgrx::*;
+    use pgrx::iter::TableIterator;
 
     /*
      * PGRX randomly reorders these import statements unless you explicitly tell the
@@ -117,7 +118,7 @@ mod fsm {
         source_path: &str,
         recursive: default!(bool, false),
         on_conflict_do_nothing: default!(bool, false),
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<TableIterator<'static, (name!(name, Option<String>), name!(version, Option<String>))>, Box<dyn std::error::Error>> {
         gen_charts::import_scxml_files(source_path, recursive, on_conflict_do_nothing)
     }
 
