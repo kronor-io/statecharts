@@ -1,7 +1,7 @@
 use chrono::Utc;
-use pgrx::*;
 use pgrx::datum::TimestampWithTimeZone;
 use pgrx::iter::TableIterator;
+use pgrx::*;
 use quick_xml::de::from_str;
 use regex::Regex;
 use serde::Deserialize;
@@ -17,7 +17,18 @@ pub fn import_scxml_files(
     source_path: &str,
     recursive: bool,
     on_conflict_do_nothing: bool,
-) -> Result<TableIterator<'static, (name!(id, i64), name!(created_at, TimestampWithTimeZone), name!(name, String), name!(version, String))>, Box<dyn std::error::Error>> {
+) -> Result<
+    TableIterator<
+        'static,
+        (
+            name!(id, i64),
+            name!(created_at, TimestampWithTimeZone),
+            name!(name, String),
+            name!(version, String),
+        ),
+    >,
+    Box<dyn std::error::Error>,
+> {
     // Executing with connection client means that it's all done in one transaction
     Spi::connect_mut(|client| {
         find_scxml_file_paths(source_path, recursive)
@@ -124,44 +135,85 @@ pub fn import_scxml_files(
                 if on_conflict_do_nothing { "on conflict do nothing" } else { "" }
                 );
 
-            match client.update(
-                &query,
-                None,
-                &[
-                    scxml.name.clone().into(),
-                    scxml.version.clone().into(),
-                    // state stuff
-                    state_ids.into(),
-                    state_names.into(),
-                    state_parent_ids.into(),
-                    state_is_initials.into(),
-                    state_is_finals.into(),
-                    state_on_entrys.into(),
-                    state_on_exits.into(),
-                    // transition stuff
-                    transition_events.into(),
-                    transition_source_states.into(),
-                    transition_target_states.into()
-                ],
-            ) {
-                Err(err) => Err(format!("Failed to deploy statechart: {}", err)),
-                Ok(rows) => {
-                    let names_and_versions =
-                        rows
-                            .map(|row| {
-                                let id = row["id"].value::<i64>()?;
-                                let created_at = row["created_at"].value::<TimestampWithTimeZone>()?;
-                                let name = row["name"].value::<String>()?;
-                                let version = row["version"].value::<String>()?;
+            let statechart_rows = client
+                .update(
+                    &query,
+                    None,
+                    &[
+                        scxml.name.clone().into(),
+                        scxml.version.clone().into(),
+                        // state stuff
+                        state_ids.into(),
+                        state_names.into(),
+                        state_parent_ids.into(),
+                        state_is_initials.into(),
+                        state_is_finals.into(),
+                        state_on_entrys.into(),
+                        state_on_exits.into(),
+                        // transition stuff
+                        transition_events.into(),
+                        transition_source_states.into(),
+                        transition_target_states.into()
+                    ],
+                )
+                .map_err(|err| format!("Failed to deploy statechart: {}", err))?;
 
-                                Ok((id.unwrap(), created_at.unwrap(), name.unwrap(), version.unwrap()))
-                            })
-                            .collect::<Result<Vec<(i64, TimestampWithTimeZone, String, String)>, spi::Error>>()
-                            .map_err(|err| format!("err reading output: {}", err))?;
+            // Format the inserted statecharts as a tuple matching the fsm.statechart table
+            let inserted_statecharts =
+                statechart_rows
+                    .map(|row| {
+                        let id = row["id"].value::<i64>()?;
+                        let created_at = row["created_at"].value::<TimestampWithTimeZone>()?;
+                        let name = row["name"].value::<String>()?;
+                        let version = row["version"].value::<String>()?;
 
-                    Ok(names_and_versions)
-                },
+                        Ok((id.unwrap(), created_at.unwrap(), name.unwrap(), version.unwrap()))
+                    })
+                    .collect::<Result<Vec<(i64, TimestampWithTimeZone, String, String)>, spi::Error>>()
+                    .map_err(|err| format!("err reading output: {}", err))?;
+
+            // verify that all the functions references by the inserted statechart exist
+            for (chart_id, _, name, version) in &inserted_statecharts {
+                let verify_query =
+                    r#"
+                        select string_agg(distinct format('%s.%s', schema_name, function_name), ', ') as missing_functions
+                        from fsm.statechart
+                        join fsm.state
+                            on state.statechart_id = statechart.id
+                        , lateral unnest(on_entry || on_exit)
+                        where
+                          statechart.id = $1
+                          and not exists (
+                            select 1
+                            from pg_proc p
+                            join pg_namespace n
+                              on p.pronamespace = n.oid
+                            where
+                              n.nspname = schema_name
+                              and p.proname = function_name
+                              and p.pronargs = 1
+                              and p.proargtypes[0] = 'fsm_event_payload'::regtype::oid
+                          )
+                    "#;
+
+                let verify_rows =
+                    client
+                        .update(
+                            verify_query,
+                            None,
+                            &[ (*chart_id).into() ],
+                        )
+                        .map_err(|err| format!("Failed to verify statechart: {}", err))?;
+
+                for row in verify_rows {
+                    match row["missing_functions"].value::<String>().unwrap() {
+                        None => (),
+                        Some(missing_functions) => Err(format!("{} v{} references the following functions that are either missing or expect the wrong arguments: {}", name, version, missing_functions))?
+                    }
+                }
             }
+
+            Ok(inserted_statecharts)
         })
         .collect::<Result<Vec<Vec<(i64, TimestampWithTimeZone, String, String)>>, String>>()
         .map(|rows_of_rows| {

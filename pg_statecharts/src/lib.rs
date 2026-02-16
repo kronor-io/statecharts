@@ -1,15 +1,15 @@
 use pgrx::*;
 
-// mod semver;
 mod gen_charts;
+// mod semver;
 
 #[pg_schema]
 mod fsm {
     use crate::gen_charts;
 
-    use pgrx::*;
     use pgrx::datum::TimestampWithTimeZone;
     use pgrx::iter::TableIterator;
+    use pgrx::*;
 
     /*
      * PGRX randomly reorders these import statements unless you explicitly tell the
@@ -119,7 +119,18 @@ mod fsm {
         source_path: &str,
         recursive: default!(bool, false),
         on_conflict_do_nothing: default!(bool, false),
-    ) -> Result<TableIterator<'static, (name!(id, i64), name!(created_at, TimestampWithTimeZone), name!(name, String), name!(version, String))>, Box<dyn std::error::Error>> {
+    ) -> Result<
+        TableIterator<
+            'static,
+            (
+                name!(id, i64),
+                name!(created_at, TimestampWithTimeZone),
+                name!(name, String),
+                name!(version, String),
+            ),
+        >,
+        Box<dyn std::error::Error>,
+    > {
         gen_charts::import_scxml_files(source_path, recursive, on_conflict_do_nothing)
     }
 
