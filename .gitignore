@@ -2,3 +2,5 @@
 dist-newstyle
 *.dump-splices
 result
+pg_statecharts/deb/
+pg_statecharts/*.deb
