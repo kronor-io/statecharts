@@ -1,0 +1,57 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+name: Release
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        # os: [ubuntu-24.04, ubuntu-24.04-arm]
+        os: [ubuntu-24.04]
+        pg-version: [18]
+    runs-on: ${{ matrix.os }}
+    container: postgres:${{ matrix.pg-version }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Set up build dependencies
+      run: |
+        apt-get update && apt-get install -y \
+          curl \
+          build-essential \
+          pkg-config \
+          libssl-dev \
+          libreadline-dev \
+          zlib1g-dev \
+          postgresql-server-dev-${{ matrix.pg-version }}
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+
+    - name: Build
+      run: |
+        set -ex
+        cd pg_statecharts
+
+        cargo install --locked cargo-pgrx@0.16.1
+
+        PG_VERSION=$(pg_config --version | sed -n 's/^PostgreSQL \([0-9]*\).*/\1/p')
+        PG_CONFIG_PATH=$(which pg_config)
+
+        sed -i "s/pg18/pg$PG_VERSION/g" Cargo.toml
+        cargo pgrx init --pg$PG_VERSION $PG_CONFIG_PATH
+
+        ./scripts/package_deb.sh
+
+    - name: Publish
+      run: |
+        set -ex
+        ls pg_statecharts/*.deb
+

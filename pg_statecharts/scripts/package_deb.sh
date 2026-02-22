@@ -8,7 +8,7 @@ VERSION=$(cat Cargo.toml | sed -n 's/^version *= *"\([0-9.]*\)"$/\1/p')
 
 cargo pgrx package --pg-config $(cargo pgrx info pg-config $PG_VERSION) --out-dir ./target/packaged
 
-rm -r $DEB_DIR
+rm -rf $DEB_DIR
 mkdir -p $DEB_DIR/DEBIAN
 
 echo "
@@ -26,7 +26,7 @@ SHARE_DIR=$DEB_DIR/usr/share/postgresql/$PG_VERSION/extension/
 
 mkdir -p $LIB_DIR $SHARE_DIR
 
-cp target/packaged/home/axel/.pgrx/*/pgrx-install/lib/postgresql/* $LIB_DIR
-cp target/packaged/home/axel/.pgrx/*/pgrx-install/share/postgresql/extension/* $SHARE_DIR
+cp "$(find target/packaged/ -name pg_statecharts.so)" $LIB_DIR
+cp "$(find target/packaged/ -name pg_statecharts--$VERSION.sql)" $SHARE_DIR
 
 dpkg-deb --build $DEB_DIR pg_statecharts_"$VERSION"_pg"$PG_VERSION"_$(uname -s)_$(uname -m).deb
