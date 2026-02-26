@@ -2,11 +2,14 @@ on:
   push:
     tags:
       - 'v*'
+    # TODO: remove branches filter
+    branches:
+      - feature/pg_statecharts
 
 name: Release
 
 jobs:
-  release:
+  package-deb:
     strategy:
       matrix:
         # os: [ubuntu-24.04, ubuntu-24.04-arm]
@@ -50,8 +53,37 @@ jobs:
 
         ./scripts/package_deb.sh
 
-    - name: Publish
-      run: |
-        set -ex
-        ls pg_statecharts/*.deb
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: deb-packages-${{ matrix.os }}-pg${{ matrix.pg-version }}
+        path: pg_statecharts/*.deb
+        if-no-files-found: error
 
+  release:
+    needs: package-deb
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
+
+      # TODO: restore the name, tag_name and remove overwrite
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: artifacts/*.deb
+        # generate_release_notes: true
+        # name: Release ${{ github.ref_name }}
+        # tag_name: ${{ github.ref }}
+        name: Release 0.0.0
+        tag_name: v0.0.0
+        overwrite: true
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
