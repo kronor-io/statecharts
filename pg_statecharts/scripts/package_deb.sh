@@ -28,5 +28,6 @@ mkdir -p $LIB_DIR $SHARE_DIR
 
 cp "$(find target/packaged/ -name pg_statecharts.so)" $LIB_DIR
 cp "$(find target/packaged/ -name pg_statecharts--$VERSION.sql)" $SHARE_DIR
+cp "$(find target/packaged/ -name pg_statecharts.control)" $SHARE_DIR
 
 dpkg-deb --build $DEB_DIR pg_statecharts_"$VERSION"_pg"$PG_VERSION"_$(uname -s)_$(uname -m).deb

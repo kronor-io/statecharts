@@ -84,6 +84,6 @@ jobs:
         name: Release 0.0.0
         tag_name: v0.0.0
         overwrite: true
-        prerelease: true
+        # prerelease: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
