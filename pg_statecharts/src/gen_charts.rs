@@ -499,7 +499,7 @@ do $$
 declare
 chart bigint;
 begin
-insert into fsm.statechart (name, version) values ('{}', {}::semver) returning id into chart;
+insert into fsm.statechart (name, version) values ('{}', to_semver('{}')) returning id into chart;
 insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
 {};
 insert into fsm.transition (statechart_id, event, source_state, target_state) values
@@ -528,7 +528,7 @@ BEGIN;
 with chart as (
     delete from fsm.statechart
     where name = '{}'
-    and version = {}::semver
+    and version = to_semver('{}')
     returning id
 )
 delete from fsm.state
@@ -554,7 +554,7 @@ select 1 / count(*)
 from fsm.statechart
 where
     name = '{}'
-    and version = {}::semver;
+    and version = to_semver('{}');
 
 -- Verify that the functions that the statechart depends on exist
 do $$
@@ -575,7 +575,7 @@ join fsm.state
 , lateral unnest(on_entry || on_exit)
 where
   statechart.name = '{}'
-  and statechart.version = {}::semver
+  and statechart.version = to_semver('{}')
   and not exists (
     select 1
     from pg_proc p
