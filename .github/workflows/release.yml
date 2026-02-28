@@ -102,7 +102,7 @@ jobs:
           # tag_name: ${{ github.ref }}
           name: Release ${{needs.get-version.outputs.version}}
           tag_name: v${{needs.get-version.outputs.version}}
-          overwrite: true
+          overwrite_files: true
           # prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
