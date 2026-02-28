@@ -9,7 +9,24 @@ on:
 name: Release
 
 jobs:
+  get-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      extension_version: ${{ steps.get-version.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: get-version
+        run: |
+          cd pg_statecharts; \
+          CARGO_TOML_VERSION=$(cat Cargo.toml | sed -n 's/^version *= *"\([0-9.]*\)"$/\1/p'); \
+          CONTROL_VERSION=$(cat pg_statecharts.control | sed -n "s/^default_version *= *'\([0-9.]*\)'$/\1/p"); \
+          if [ "$CARGO_TOML_VERSION" != "$CONTROL_VERSION" ]; then echo "The version in Cargo.toml is not the same as the version in pg_statecharts.control"; exit 1; fi; \
+          echo "version=$CARGO_TOML_VERSION" >> "$GITHUB_OUTPUT"
+
   package-deb:
+    needs: get-version
     strategy:
       matrix:
         # os: [ubuntu-24.04, ubuntu-24.04-arm]
@@ -19,71 +36,73 @@ jobs:
     container: postgres:${{ matrix.pg-version }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v2
 
-    - name: Set up build dependencies
-      run: |
-        apt-get update && apt-get install -y \
-          curl \
-          build-essential \
-          pkg-config \
-          libssl-dev \
-          libreadline-dev \
-          zlib1g-dev \
-          postgresql-server-dev-${{ matrix.pg-version }}
+      - name: Set up build dependencies
+        run: |
+          apt-get update && apt-get install -y \
+            curl \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libreadline-dev \
+            zlib1g-dev \
+            postgresql-server-dev-${{ matrix.pg-version }}
 
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
 
-    - name: Build
-      run: |
-        set -ex
-        cd pg_statecharts
+      - name: Build
+        run: |
+          set -ex
+          cd pg_statecharts
 
-        cargo install --locked cargo-pgrx@0.16.1
+          cargo install --locked cargo-pgrx@0.16.1
 
-        PG_VERSION=$(pg_config --version | sed -n 's/^PostgreSQL \([0-9]*\).*/\1/p')
-        PG_CONFIG_PATH=$(which pg_config)
+          PG_VERSION=$(pg_config --version | sed -n 's/^PostgreSQL \([0-9]*\).*/\1/p')
+          PG_CONFIG_PATH=$(which pg_config)
 
-        sed -i "s/pg18/pg$PG_VERSION/g" Cargo.toml
-        cargo pgrx init --pg$PG_VERSION $PG_CONFIG_PATH
+          sed -i "s/pg18/pg$PG_VERSION/g" Cargo.toml
+          cargo pgrx init --pg$PG_VERSION $PG_CONFIG_PATH
 
-        ./scripts/package_deb.sh
+          ./scripts/package_deb.sh
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: deb-packages-${{ matrix.os }}-pg${{ matrix.pg-version }}
-        path: pg_statecharts/*.deb
-        if-no-files-found: error
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages-${{ matrix.os }}-pg${{ matrix.pg-version }}
+          path: pg_statecharts/*.deb
+          if-no-files-found: error
 
   release:
-    needs: package-deb
+    needs:
+      - get-version
+      - package-deb
     runs-on: ubuntu-24.04
     steps:
-    - name: Download all build artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        merge-multiple: true
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
-    - name: Display structure of downloaded files
-      run: ls -R artifacts/
+      - name: Display structure of downloaded files
+        run: ls -R artifacts/
 
-      # TODO: restore the name, tag_name and remove overwrite
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: artifacts/*.deb
-        # generate_release_notes: true
-        # name: Release ${{ github.ref_name }}
-        # tag_name: ${{ github.ref }}
-        name: Release 0.0.0
-        tag_name: v0.0.0
-        overwrite: true
-        # prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # TODO: restore the name, tag_name and remove overwrite
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.deb
+          # generate_release_notes: true
+          # name: Release ${{ github.ref_name }}
+          # tag_name: ${{ github.ref }}
+          name: Release ${{needs.get-version.outputs.version}}
+          tag_name: v${{needs.get-version.outputs.version}}
+          overwrite: true
+          # prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
