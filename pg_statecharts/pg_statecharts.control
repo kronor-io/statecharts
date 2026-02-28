@@ -1,0 +1,8 @@
+comment = 'pg_statecharts:  Created by pgrx'
+default_version = '0.0.0'
+module_pathname = 'pg_statecharts'
+relocatable = false
+superuser = true
+trusted = false
+requires = 'ltree, semver'
+# requires = 'ltree'
