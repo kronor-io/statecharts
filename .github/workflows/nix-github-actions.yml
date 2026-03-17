@@ -2,6 +2,10 @@ name: Nix Flake actions
 
 on:
   push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
   nix-matrix:

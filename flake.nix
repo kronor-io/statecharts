@@ -12,8 +12,6 @@
     nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
     hackage-nix.url = "github:kronor-io/hackage.nix";
     hackage-nix.flake = false;
-    nix-github-actions.url = "github:nix-community/nix-github-actions";
-    nix-github-actions.inputs.nixpkgs.follows = "nixpkgs";
   };
   outputs =
     { self
@@ -21,7 +19,6 @@
     , haskell-nix
     , hackage-nix
     , nixpkgs
-    , nix-github-actions
     }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
@@ -54,6 +51,52 @@
           list_of_attrs;
       eachSystem = f: foldAttrs mergeAttrs { }
         (map (s: builtins.mapAttrs (_: v: { ${s} = v; }) (f s)) supportedSystems);
+
+      githubActionsLib =
+        let
+          inherit (builtins) attrValues mapAttrs attrNames;
+          flatten = list: builtins.foldl' (acc: v: acc ++ v) [ ] list;
+        in
+        rec {
+          githubPlatforms = {
+            "x86_64-linux" = "ubuntu-latest";
+            "x86_64-darwin" = "macos-13";
+            "aarch64-darwin" = "macos-latest";
+            "aarch64-linux" = "ubuntu-24.04-arm";
+          };
+
+          mkGithubMatrix =
+            { checks
+            , attrPrefix ? "githubActions.checks"
+            , platforms ? githubPlatforms
+            }: {
+              inherit checks;
+              matrix = {
+                include = flatten (attrValues (
+                  mapAttrs
+                    (
+                      system: pkgs: builtins.map
+                        (attr:
+                          {
+                            name = attr;
+                            inherit system;
+                            os =
+                              let
+                                os = platforms.${system};
+                              in
+                              if builtins.typeOf os == "list" then os else [ os ];
+                            attr = (
+                              if attrPrefix != ""
+                              then "${attrPrefix}.${system}.\"${attr}\""
+                              else "${system}.\"${attr}\""
+                            );
+                          })
+                        (attrNames pkgs)
+                    )
+                    checks));
+              };
+            };
+        };
     in
     eachSystem
       (system:
@@ -117,11 +160,12 @@
         devShells.default = shell;
       }
       ) // {
-      githubActions = nix-github-actions.lib.mkGithubMatrix {
-        checks = (nixpkgs.lib.attrsets.recursiveUpdate self.checks self.packages);
-        platforms = nix-github-actions.lib.githubPlatforms // {
-          "aarch64-darwin" = "macos-15";
-        };
+      githubActions = githubActionsLib.mkGithubMatrix {
+        checks = (nixpkgs.lib.attrsets.recursiveUpdate self.checks (
+          nixpkgs.lib.attrsets.mapAttrs
+            (_: pkgs: nixpkgs.lib.attrsets.removeAttrs pkgs [ "freezeFile" ])
+            self.packages
+        ));
       };
     };
 }
