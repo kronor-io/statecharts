@@ -1,4 +1,6 @@
 .stack-work
 dist-newstyle
 *.dump-splices
-result
+result*
+.pre-commit-config.yaml
+.direnv

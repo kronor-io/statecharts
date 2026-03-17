@@ -1,4 +1,4 @@
-cabal-version: 3.14
+cabal-version: 3.0
 name:           statechart-sdk
 version:        0.1.1.1
 description:    Statechart SDK (Statechart definitions and build tool)

@@ -2,6 +2,8 @@
 module Statechart.SCXML (readSCXMLfiles, parse, parseRoot) where
 
 import Data.Map.Strict qualified as Map
+import Path
+import Path.IO
 import RIO
 import RIO.ByteString qualified as BS
 import RIO.ByteString.Lazy qualified as LBS
@@ -10,8 +12,6 @@ import Statechart.Types
 import Text.XML
 import Text.XML qualified as XML
 import Text.XML.Cursor
-import Path
-import Path.IO
 
 readSCXMLfiles :: Path Abs Dir -> IO [(Path Rel File, Chart StateName EventName)]
 readSCXMLfiles sourceDir = do
@@ -21,8 +21,8 @@ readSCXMLfiles sourceDir = do
         case parse $ LBS.fromStrict bs of
             Left e -> error . show $ e
             Right c -> return (file, c)
- where
-   scxmlFile a = fileExtension a == Just ".scxml"
+  where
+    scxmlFile a = fileExtension a == Just ".scxml"
 
 -- | We use this to go from XML to our canonical Chart type.
 parse :: LBS.ByteString -> Either Text (Chart StateName EventName)
@@ -90,13 +90,13 @@ getContent cursor = mapM toContent childs
         contentType = getNodeName c
 
 data TriggerType = OnEntry | OnExit
-                 deriving (Eq)
+    deriving (Eq)
 
 getContentOfTriggerType :: TriggerType -> Cursor -> Either Text [Content EventName]
 getContentOfTriggerType tt = fmap join . traverse getContent . getChildsWithName [triggerName tt]
-    where
-        triggerName OnEntry = "onentry"
-        triggerName OnExit = "onexit"
+  where
+    triggerName OnEntry = "onentry"
+    triggerName OnExit = "onexit"
 
 getTransitions :: StateName -> Cursor -> Either Text [Transition StateName EventName]
 getTransitions src cursor = mapM toTransition childs
