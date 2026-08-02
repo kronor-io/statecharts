@@ -69,7 +69,37 @@ Events drive transitions; the machine is always in exactly one active state (or 
 
 ## Installation
 
-Clone the repository and run sqitch against your database:
+There are two ways to install, and they are alternatives — pick one.
+
+### As an extension (recommended)
+
+`pg_statecharts` packages the same schema as a PostgreSQL extension. It is pure
+SQL, so there is nothing to compile: the same files work on every PostgreSQL
+version, architecture and operating system, and `ltree` is the only dependency.
+
+```bash
+cd pg_statecharts
+./install.sh          # copies two files into PostgreSQL's extension directory
+```
+
+```sql
+create extension pg_statecharts cascade;
+```
+
+There is a second, optional extension for development machines,
+[`pg_statecharts_dev`](pg_statecharts_dev), which turns `.scxml` files into
+statecharts or into sqitch migrations. It reads and writes files on the
+database host, so it is kept separate and is not something to install in
+production.
+
+See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including
+how to upgrade from the older Rust build, and [example/](example) for a
+complete working project.
+
+### With sqitch
+
+The original deployment path: clone the repository and run sqitch against your
+database.
 
 ```bash
 git clone https://github.com/kronor-io/statecharts
@@ -84,6 +114,10 @@ To roll back:
 ```bash
 sqitch revert -t postgresql://user:password@host/db_name
 ```
+
+Note that this path uses the [`semver`](https://pgxn.org/dist/semver/) PGXN
+extension for the version column, whereas the extension defines an equivalent
+`fsm_semver` domain in plain SQL and needs no such dependency.
 
 ---
 

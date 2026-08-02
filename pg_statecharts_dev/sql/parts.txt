@@ -1,0 +1,5 @@
+sql/type/scxml.sql
+sql/function/files.sql
+sql/function/parse_scxml.sql
+sql/function/import_scxml_files.sql
+sql/function/gen_statechart_sqitch_migrations.sql

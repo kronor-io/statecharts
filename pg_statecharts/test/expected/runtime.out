@@ -1,0 +1,110 @@
+-- Smoke test that a machine defined through the extension actually runs.
+-- Error CONTEXT carries plpgsql line numbers, which would make this
+-- expected output break on every unrelated edit.
+\set SHOW_CONTEXT never
+create extension if not exists pg_statecharts cascade;
+NOTICE:  extension "pg_statecharts" already exists, skipping
+create table lightswitch (
+  id bigint not null generated always as identity primary key,
+  state_machine_id bigint not null,
+  turned_on_at timestamptz,
+  turned_off_at timestamptz
+);
+create function turn_on_lightswitch(event_payload fsm_event_payload) returns void as
+$$
+  update lightswitch set turned_on_at = now(), turned_off_at = null
+  where state_machine_id = (event_payload).machine_id
+$$ language sql;
+create function turn_off_lightswitch(event_payload fsm_event_payload) returns void as
+$$
+  update lightswitch set turned_on_at = null, turned_off_at = now()
+  where state_machine_id = (event_payload).machine_id
+$$ language sql;
+do $$
+declare
+  chart bigint;
+begin
+  insert into fsm.statechart (name, version) values ('lightswitch_flow', to_semver('1.0.0'))
+  returning id into chart;
+
+  insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values
+  (chart, 'off', 'OFF', null, true, false, array[('public', 'turn_off_lightswitch')]::fsm_callback_name[], array[]::fsm_callback_name[]),
+  (chart, 'on', 'ON', null, false, false, array[('public', 'turn_on_lightswitch')]::fsm_callback_name[], array[]::fsm_callback_name[]);
+
+  insert into fsm.transition (statechart_id, event, source_state, target_state) values
+  (chart, 'lightswitch.turn_on', 'off', 'on'),
+  (chart, 'lightswitch.turn_off', 'on', 'off');
+end $$;
+-- parent_path / node_path are filled in by the trigger
+select id, parent_id, parent_path::text ~ '^[0-9]+$' as parent_path_is_chart_id, node_path::text ~ '^[0-9]+\.' as node_path_prefixed
+from fsm.state order by id;
+ id  | parent_id | parent_path_is_chart_id | node_path_prefixed 
+-----+-----------+-------------------------+--------------------
+ off |           | t                       | t
+ on  |           | t                       | t
+(2 rows)
+
+select id as initial_state from fsm.get_initial_state((select id from fsm.get_latest_statechart('lightswitch_flow')));
+ initial_state 
+---------------
+ off
+(1 row)
+
+-- start a machine and drive it
+insert into lightswitch (state_machine_id)
+select s.id from fsm.create_state_machine_with_latest_statechart(1, 'lightswitch_flow') s;
+-- the returned row carries a timestamp, so only assert that it started
+select fsm.start_machine(1, state_machine_id) is not null as started from lightswitch;
+ started 
+---------
+ t
+(1 row)
+
+select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
+ is_on | is_off 
+-------+--------
+ f     | t
+(1 row)
+
+select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_on') from lightswitch;
+ notify_state_machine 
+----------------------
+ 
+(1 row)
+
+select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
+ is_on | is_off 
+-------+--------
+ t     | f
+(1 row)
+
+select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_off') from lightswitch;
+ notify_state_machine 
+----------------------
+ 
+(1 row)
+
+select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
+ is_on | is_off 
+-------+--------
+ f     | t
+(1 row)
+
+-- the currently active state is the only one without an exited_at
+select state_id from fsm.state_machine_state where exited_at is null;
+ state_id 
+----------
+ off
+(1 row)
+
+-- the machine is in 'off', so turn_on is valid and turn_off is not
+select fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_on') as turn_on_valid,
+       fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_off') as turn_off_valid
+from lightswitch;
+ turn_on_valid | turn_off_valid 
+---------------+----------------
+ t             | f
+(1 row)
+
+drop table lightswitch cascade;
+delete from fsm.statechart;

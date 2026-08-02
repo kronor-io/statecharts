@@ -1,0 +1,62 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+name: Release
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the tag matches the extension version
+        run: |
+          set -eu
+          CONTROL_VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" \
+            pg_statecharts/pg_statecharts.control)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$CONTROL_VERSION" != "$TAG_VERSION" ]; then
+            echo "tag $GITHUB_REF_NAME does not match default_version $CONTROL_VERSION" >&2
+            echo "in pg_statecharts/pg_statecharts.control" >&2
+            exit 1
+          fi
+          echo "version=$CONTROL_VERSION" >> "$GITHUB_ENV"
+
+      # Nothing is compiled, so there is no build matrix: one tarball works
+      # everywhere, and the .deb per PostgreSQL major exists only because
+      # Debian puts extensions under a versioned path. All of it takes seconds.
+      - name: Build packages
+        run: ./scripts/package_release.sh dist
+
+      - name: Smoke test the packages
+        run: |
+          set -eu
+          for pg in 16 17 18; do
+            docker run --rm -d --name smoke$pg \
+              -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:$pg
+            for i in $(seq 30); do
+              docker exec smoke$pg pg_isready -U postgres >/dev/null 2>&1 && break
+              sleep 1
+            done
+            docker cp "dist/pg-statecharts-${pg}_${version}_all.deb" smoke$pg:/tmp/ext.deb
+            docker exec smoke$pg dpkg -i /tmp/ext.deb
+            docker exec smoke$pg psql -U postgres -v ON_ERROR_STOP=1 \
+              -c 'create extension pg_statecharts_dev cascade'
+            docker rm -f smoke$pg
+            echo "pg$pg ok"
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          name: Release ${{ env.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,97 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - master
+
+name: Extension Tests
+
+jobs:
+  regress:
+    name: pg${{ matrix.pg-version }}
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pg-version: [16, 17, 18]
+
+    container: postgres:${{ matrix.pg-version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pg_regress lives in the -dev package. The extensions themselves need
+      # nothing to build, this is purely so the test harness is available.
+      - name: Install test harness
+        run: |
+          apt-get -qq update
+          apt-get -qq -y --no-install-recommends install make postgresql-server-dev-${{ matrix.pg-version }}
+
+      - name: Start PostgreSQL
+        run: |
+          chown -R postgres /__w
+          su postgres -c "/usr/lib/postgresql/${{ matrix.pg-version }}/bin/initdb -D /tmp/pgdata"
+          su postgres -c "/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_ctl -D /tmp/pgdata -l /tmp/pg.log -o '-k /tmp' start"
+
+      - name: Install extensions
+        run: |
+          ./pg_statecharts/install.sh
+          ./pg_statecharts_dev/install.sh
+
+      - name: Run tests
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: |
+          set -e
+          for ext in pg_statecharts pg_statecharts_dev; do
+            su postgres -c "make -C $ext installcheck PGHOST=/tmp PGUSER=postgres"
+          done
+
+      - name: Show diffs on failure
+        if: failure()
+        run: |
+          for f in pg_statecharts/test/regression.diffs pg_statecharts_dev/test/regression.diffs; do
+            [ -f "$f" ] && { echo "=== $f ==="; cat "$f"; }
+          done
+          cat /tmp/pg.log || true
+
+  upgrade:
+    name: upgrade from 0.0.0
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    container: postgres:18
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get -qq update
+          apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient ca-certificates
+
+      # The 0.0.0 install used the semver extension, so the upgrade path can
+      # only be exercised with it present.
+      - name: Install semver
+        run: pgxn install semver
+
+      - name: Start PostgreSQL
+        run: |
+          su postgres -c "/usr/lib/postgresql/18/bin/initdb -D /tmp/pgdata"
+          su postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /tmp/pgdata -l /tmp/pg.log -o '-k /tmp' start"
+
+      - name: Install extension
+        run: ./pg_statecharts/install.sh
+
+      - name: Check the upgrade converts data and drops semver
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: .github/scripts/check_upgrade.sh
