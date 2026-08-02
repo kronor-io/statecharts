@@ -25,6 +25,15 @@
 drop function if exists fsm.import_scxml_files(text, boolean, boolean);
 drop function if exists fsm.gen_statechart_sqitch_migrations(text, text, boolean, boolean);
 
+-- 0.0.0 shipped '^[a-za-z0-9_]+$' for this constraint: the A-Z range had been
+-- flattened to a second a-z by a stray lowercasing, so state ids containing
+-- capital letters were rejected even though the sqitch deployment of the same
+-- schema accepted them. The corrected pattern only ever accepts more than the
+-- old one did, so no existing row can fail the revalidation.
+alter table fsm.state drop constraint if exists id_must_be_alphanumeric;
+alter table fsm.state add constraint id_must_be_alphanumeric
+  check (id ~ '^[a-zA-Z0-9_]+$');
+
 create domain fsm_semver as text
   check (value ~ '^\d+\.\d+\.\d+$');
 

@@ -31,8 +31,39 @@ $PSQL -c "drop database if exists upgrade_check"
 $PSQL -c "create database upgrade_check"
 $PSQL -d upgrade_check <<'SQL'
 create extension pg_statecharts version '0.0.0' cascade;
+
+-- The semver extension's script does "SET client_min_messages TO warning" and
+-- never resets it, so installing it silently mutes every NOTICE for the rest
+-- of the session. Put it back so the diagnostics below are visible.
+reset client_min_messages;
+
 insert into fsm.statechart (name, version) values
   ('flow', to_semver('1.9')), ('flow', to_semver('1.10.0')), ('flow', to_semver('2.0.0'));
+
+insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+select id, true, false, 'lowercase_only', 'S', id::text::ltree, (id::text || '.lowercase_only')::ltree
+from fsm.statechart where version = '1.9.0';
+
+-- 0.0.0 rejects this; after the upgrade it must be accepted. Asserted rather
+-- than merely reported, so that the check cannot pass by staying quiet.
+do $pre$
+begin
+  begin
+    insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+    select id, false, false, 'HasCapitals', 'S', id::text::ltree, (id::text || '.x')::ltree
+    from fsm.statechart where version = '1.9.0';
+    raise exception '0.0.0 was expected to reject a state id with capital letters';
+  exception when check_violation then
+    null;
+  end;
+
+  if exists (select 1 from fsm.state where id = 'HasCapitals') then
+    raise exception 'the capitalised state id should not have been inserted';
+  end if;
+
+  raise notice 'confirmed: 0.0.0 rejects state ids with capital letters';
+end
+$pre$;
 SQL
 
 # put the real control file back, as installing the new release would
@@ -83,6 +114,26 @@ begin
     where proname in ('import_scxml_files', 'gen_statechart_sqitch_migrations')
   ) then
     raise exception 'the old file handling functions should have been dropped';
+  end if;
+
+  -- the repaired constraint has to accept capitals, and still reject the
+  -- characters it always rejected
+  insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+  select id, false, false, 'HasCapitals', 'S', id::text::ltree, (id::text || '.x')::ltree
+  from fsm.statechart where version = '1.9.0';
+
+  begin
+    insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+    select id, false, false, 'not-allowed', 'S', id::text::ltree, (id::text || '.y')::ltree
+    from fsm.statechart where version = '1.9.0';
+    raise exception 'the constraint should still reject a hyphen';
+  exception when check_violation then
+    null;
+  end;
+
+  -- the row that existed before the upgrade survived the revalidation
+  if not exists (select 1 from fsm.state where id = 'lowercase_only') then
+    raise exception 'existing state rows did not survive the constraint change';
   end if;
 
   raise notice 'upgrade from 0.0.0 verified';

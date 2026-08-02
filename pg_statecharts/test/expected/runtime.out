@@ -35,6 +35,28 @@ begin
   (chart, 'lightswitch.turn_on', 'off', 'on'),
   (chart, 'lightswitch.turn_off', 'on', 'off');
 end $$;
+-- State ids may contain capital letters. Guarding this because 0.0.0 shipped
+-- '^[a-za-z0-9_]+$' for the constraint, with the A-Z range flattened to a
+-- second a-z, and silently rejected them.
+insert into fsm.state (statechart_id, id, name, is_initial, is_final)
+select id, 'HasCapitals', 'Capitals', false, false from fsm.statechart;
+select id from fsm.state where id = 'HasCapitals';
+     id      
+-------------
+ HasCapitals
+(1 row)
+
+-- ...but the characters it was always meant to reject are still rejected
+do $$
+begin
+  insert into fsm.state (statechart_id, id, name, is_initial, is_final)
+  select id, 'not-allowed', 'Hyphen', false, false from fsm.statechart;
+  raise exception 'a hyphen should not be allowed in a state id';
+exception when check_violation then
+  raise notice 'state ids still reject punctuation';
+end $$;
+NOTICE:  state ids still reject punctuation
+delete from fsm.state where id = 'HasCapitals';
 -- parent_path / node_path are filled in by the trigger
 select id, parent_id, parent_path::text ~ '^[0-9]+$' as parent_path_is_chart_id, node_path::text ~ '^[0-9]+\.' as node_path_prefixed
 from fsm.state order by id;

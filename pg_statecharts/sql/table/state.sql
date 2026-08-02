@@ -15,7 +15,7 @@ create table fsm.state (
     check (char_length(id) >= 1 and char_length(id) <= 50),
 
   constraint id_must_be_alphanumeric
-    check (id ~ '^[a-za-z0-9_]+$'),
+    check (id ~ '^[a-zA-Z0-9_]+$'),
 
   constraint cannot_be_both_initial_and_final
     check (not (is_initial and is_final)),

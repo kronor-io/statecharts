@@ -19,6 +19,28 @@ create table fsm.statechart (
 
 create unique index idx_unique_name_version on fsm.statechart(name, version);
 
+-- Note the constraint: 0.0.0 really did ship '^[a-za-z0-9_]+$', with the A-Z
+-- range flattened to a second a-z. The upgrade has to repair it.
+create table fsm.state (
+  statechart_id bigint not null,
+  is_initial bool not null,
+  is_final bool not null,
+  id text not null,
+  name text not null,
+  parent_path ltree not null,
+  node_path ltree not null,
+  parent_id text,
+  primary key (statechart_id, id),
+
+  constraint id_must_be_alphanumeric
+    check (id ~ '^[a-za-z0-9_]+$'),
+
+  constraint fk_statechart
+    foreign key(statechart_id)
+    references fsm.statechart(id)
+    on delete cascade
+);
+
 create function fsm.get_latest_statechart(named text)
 returns setof fsm.statechart as
 $$
