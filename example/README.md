@@ -66,7 +66,7 @@ postgres=# select id, state_machine_id, turned_on_at, turned_off_at from lightsw
 ----+------------------+--------------+-------------------------------
   1 |                1 |              | 2026-08-02 11:19:30.885771+00
 
-postgres=# select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_on') from lightswitch;
+postgres=# select fsm.notify_state_machine(shard => 1, machine => state_machine_id, event => 'lightswitch.turn_on') from lightswitch;
 postgres=# select id, turned_on_at, turned_off_at from lightswitch;
  id |         turned_on_at          | turned_off_at
 ----+-------------------------------+---------------

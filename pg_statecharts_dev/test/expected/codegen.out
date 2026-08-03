@@ -30,7 +30,7 @@ select fsm.__migration_deploy(:'chart'::xml, 'myproject', 'orders.checkout', '1.
  declare                                                                                                                                                                                          +
  chart bigint;                                                                                                                                                                                    +
  begin                                                                                                                                                                                            +
- insert into fsm.statechart (name, version) values ('orders.checkout', to_semver('1.2.3')) returning id into chart;                                                                               +
+ insert into fsm.statechart (name, version) values ('orders.checkout', fsm.to_semver('1.2.3')) returning id into chart;                                                                           +
  insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values                                                                                       +
  (chart, 'pending', 'Pending', null, true, false, array[('billing', 'reserve_stock'),('public', 'notify_pending')]::fsm_callback_name[], array[('billing', 'release_hold')]::fsm_callback_name[]),+
  (chart, 'paying', 'Paying', null, false, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]),                                                                                     +
@@ -59,7 +59,7 @@ select fsm.__migration_revert('myproject', 'orders.checkout', '1.2.3');
  with chart as (                                                     +
      delete from fsm.statechart                                      +
      where name = 'orders.checkout'                                  +
-     and version = to_semver('1.2.3')                                +
+     and version = fsm.to_semver('1.2.3')                            +
      returning id                                                    +
  )                                                                   +
  delete from fsm.state                                               +
@@ -85,7 +85,7 @@ select fsm.__migration_verify('myproject', 'orders.checkout', '1.2.3');
  from fsm.statechart                                                           +
  where                                                                         +
      name = 'orders.checkout'                                                  +
-     and version = to_semver('1.2.3');                                         +
+     and version = fsm.to_semver('1.2.3');                                     +
                                                                                +
  -- Verify that the functions that the statechart depends on exist             +
  do $$                                                                         +
@@ -106,7 +106,7 @@ select fsm.__migration_verify('myproject', 'orders.checkout', '1.2.3');
  , lateral unnest(on_entry || on_exit)                                         +
  where                                                                         +
    statechart.name = 'orders.checkout'                                         +
-   and statechart.version = to_semver('1.2.3')                                 +
+   and statechart.version = fsm.to_semver('1.2.3')                             +
    and not exists (                                                            +
      select 1                                                                  +
      from pg_proc p                                                            +

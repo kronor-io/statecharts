@@ -286,8 +286,8 @@ $$ language plpgsql immutable;
 
 -- The chart version declared on the <scxml> element, exactly as written.
 --
--- The raw string is returned rather than an fsm_semver because it is what ends
--- up in the generated migration's file name and in its to_semver(...) call.
+-- The raw string is returned rather than an fsm.semver because it is what ends
+-- up in the generated migration's file name and in its fsm.to_semver(...) call.
 -- Validation still happens here so that a bad version is reported against the
 -- file it came from.
 create or replace function fsm.__scxml_version(doc xml, file_path text)
@@ -295,7 +295,7 @@ returns text as
 $$
   declare
     raw_version text;
-    normalised fsm_semver;
+    normalised fsm.semver;
   begin
     raw_version := fsm.__xml_attr(doc, 'version');
 
@@ -305,7 +305,7 @@ $$
     end if;
 
     begin
-      normalised := to_semver(raw_version);
+      normalised := fsm.to_semver(raw_version);
     exception when others then
       raise exception 'the <scxml> element in % has an invalid version %',
         file_path, quote_literal(raw_version)

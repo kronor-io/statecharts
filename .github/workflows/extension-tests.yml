@@ -95,3 +95,11 @@ jobs:
           PGHOST: /tmp
           PGUSER: postgres
         run: .github/scripts/check_upgrade.sh
+
+      # Nothing of ours is called to_semver in the same schema as semver's own,
+      # so the two extensions can now be installed side by side.
+      - name: Check pg_statecharts installs alongside semver
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: .github/scripts/check_semver_coexistence.sh

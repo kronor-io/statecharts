@@ -4,7 +4,7 @@ $$
     select *
     from fsm.statechart
     where name = named
-    -- fsm_semver is a domain over text, so it has to be ordered by its numeric
+    -- fsm.semver is a domain over text, so it has to be ordered by its numeric
     -- components rather than lexicographically. See fsm.semver_sort_key.
     order by fsm.semver_sort_key(version) desc
     limit 1

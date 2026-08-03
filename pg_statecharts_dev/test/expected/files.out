@@ -223,23 +223,23 @@ select pg_read_file('/tmp/pg_statecharts_test.plan');
 select fsm.__migration_deploy(
   '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="lonely" version="1.0" initial="s">'
   '<state id="s" name="S"/></scxml>'::xml, 'proj', 'lonely', '1.0');
-                                             __migration_deploy                                             
-------------------------------------------------------------------------------------------------------------
- -- Deploy proj:statechart/lonely-1.0 to pg                                                                +
-                                                                                                           +
- -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN                                      +
-                                                                                                           +
- BEGIN;                                                                                                    +
- do $$                                                                                                     +
- declare                                                                                                   +
- chart bigint;                                                                                             +
- begin                                                                                                     +
- insert into fsm.statechart (name, version) values ('lonely', to_semver('1.0')) returning id into chart;   +
- insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values+
- (chart, 's', 'S', null, true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]);         +
- end                                                                                                       +
- $$;                                                                                                       +
- COMMIT;                                                                                                   +
+                                             __migration_deploy                                              
+-------------------------------------------------------------------------------------------------------------
+ -- Deploy proj:statechart/lonely-1.0 to pg                                                                 +
+                                                                                                            +
+ -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN                                       +
+                                                                                                            +
+ BEGIN;                                                                                                     +
+ do $$                                                                                                      +
+ declare                                                                                                    +
+ chart bigint;                                                                                              +
+ begin                                                                                                      +
+ insert into fsm.statechart (name, version) values ('lonely', fsm.to_semver('1.0')) returning id into chart;+
+ insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values +
+ (chart, 's', 'S', null, true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]);          +
+ end                                                                                                        +
+ $$;                                                                                                        +
+ COMMIT;                                                                                                    +
  
 (1 row)
 

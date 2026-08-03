@@ -35,7 +35,7 @@ $$
 
         if on_conflict_do_nothing then
           insert into fsm.statechart (name, version)
-          values (chart_name, to_semver(chart_version))
+          values (chart_name, fsm.to_semver(chart_version))
           on conflict do nothing
           returning statechart.* into chart;
 
@@ -46,7 +46,7 @@ $$
         else
           begin
             insert into fsm.statechart (name, version)
-            values (chart_name, to_semver(chart_version))
+            values (chart_name, fsm.to_semver(chart_version))
             returning statechart.* into chart;
           exception when unique_violation then
             raise exception '% version % has already been imported',

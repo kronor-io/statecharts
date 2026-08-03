@@ -1,5 +1,5 @@
 sql/schema.sql
-sql/type/fsm_semver.sql
+sql/type/semver.sql
 sql/type/fsm_event_payload.sql
 sql/type/fsm_callback_name.sql
 sql/table/statechart.sql
