@@ -113,6 +113,25 @@ select fsm.gen_statechart_sqitch_migrations(:'chart_a', '/tmp/pg_statecharts_tes
 -- the plan was not touched by the failed run
 select pg_read_file('/tmp/pg_statecharts_test.plan');
 
+-- Dots in a chart name become directory separators, so the directories that
+-- need creating are deeper than <sqitch_dir>/{deploy,revert,verify}/statechart.
+select fsm.__migration_name('myschema.thingflow', '1.0.0') as dotted,
+       fsm.__migration_name('a.b.c', '2.1.0') as deeply_dotted;
+
+-- The hint has to name the real missing directories rather than assume one
+-- level, because following it is supposed to fix the error.
+select fsm.__write_file(:'dir' || '_dotted-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="myschema.thingflow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_dotted-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+
+-- Chart names are only length checked, so a path can contain characters that
+-- would not survive being pasted into a shell. Those get quoted.
+select fsm.__write_file(:'dir' || '_spaced-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="two words.flow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_spaced-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+
 -- A chart with no transitions still produces a migration that runs, rather
 -- than a NULL body that silently writes nothing.
 select fsm.__migration_deploy(

@@ -207,7 +207,7 @@ ERROR:  the sqitch project is missing output directories
 DETAIL:  /tmp/deploy/statechart
 /tmp/revert/statechart
 /tmp/verify/statechart
-HINT:  create them first, for example: mkdir -p /tmp/{deploy,revert,verify}/statechart
+HINT:  create them first: mkdir -p /tmp/deploy/statechart /tmp/revert/statechart /tmp/verify/statechart
 -- the plan was not touched by the failed run
 select pg_read_file('/tmp/pg_statecharts_test.plan');
      pg_read_file      
@@ -218,6 +218,47 @@ select pg_read_file('/tmp/pg_statecharts_test.plan');
  
 (1 row)
 
+-- Dots in a chart name become directory separators, so the directories that
+-- need creating are deeper than <sqitch_dir>/{deploy,revert,verify}/statechart.
+select fsm.__migration_name('myschema.thingflow', '1.0.0') as dotted,
+       fsm.__migration_name('a.b.c', '2.1.0') as deeply_dotted;
+               dotted                |     deeply_dotted      
+-------------------------------------+------------------------
+ statechart/myschema/thingflow-1.0.0 | statechart/a/b/c-2.1.0
+(1 row)
+
+-- The hint has to name the real missing directories rather than assume one
+-- level, because following it is supposed to fix the error.
+select fsm.__write_file(:'dir' || '_dotted-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="myschema.thingflow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_dotted-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  the sqitch project is missing output directories
+DETAIL:  /tmp/deploy/statechart/myschema
+/tmp/revert/statechart/myschema
+/tmp/verify/statechart/myschema
+HINT:  create them first: mkdir -p /tmp/deploy/statechart/myschema /tmp/revert/statechart/myschema /tmp/verify/statechart/myschema
+-- Chart names are only length checked, so a path can contain characters that
+-- would not survive being pasted into a shell. Those get quoted.
+select fsm.__write_file(:'dir' || '_spaced-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="two words.flow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_spaced-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  the sqitch project is missing output directories
+DETAIL:  /tmp/deploy/statechart/two words
+/tmp/revert/statechart/two words
+/tmp/verify/statechart/two words
+HINT:  create them first: mkdir -p '/tmp/deploy/statechart/two words' '/tmp/revert/statechart/two words' '/tmp/verify/statechart/two words'
 -- A chart with no transitions still produces a migration that runs, rather
 -- than a NULL body that silently writes nothing.
 select fsm.__migration_deploy(

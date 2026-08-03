@@ -294,9 +294,9 @@ $gen$
     -- Check every output directory before writing anything, so that a missing
     -- verify/ directory cannot leave a half written set of migrations behind.
     declare
-      missing text;
+      missing text[];
     begin
-      select string_agg(distinct dir, E'\n' order by dir)
+      select array_agg(distinct d.dir order by d.dir)
       into missing
       from __pg_statecharts_migrations m
       cross join lateral (
@@ -311,11 +311,27 @@ $gen$
       where pg_stat_file(d.dir, true) is null;
 
       if missing is not null then
+        -- The hint lists exactly the directories that are missing, which is
+        -- not always <sqitch_dir>/{deploy,revert,verify}/statechart: dots in a
+        -- chart name become directory separators, so 'myschema.thingflow'
+        -- needs .../statechart/myschema and 'a.b.c' needs .../statechart/a/b.
+        -- mkdir -p creates the intermediate levels, so the leaf directories
+        -- computed above are enough.
+        --
+        -- Paths are shell quoted when they contain anything outside a
+        -- conservative safe set. Chart names are only length checked, so they
+        -- can hold spaces or shell metacharacters, and this hint is meant to
+        -- be pasted into a terminal.
         raise exception 'the sqitch project is missing output directories'
-          using detail = missing,
-                hint = format(
-                  'create them first, for example: mkdir -p %s/{deploy,revert,verify}/statechart',
-                  sqitch_dir
+          using detail = array_to_string(missing, E'\n'),
+                hint = 'create them first: mkdir -p ' || (
+                  select string_agg(
+                    case
+                      when dir ~ '^[A-Za-z0-9_./@%+:-]+$' then dir
+                      else $q$'$q$ || replace(dir, $q$'$q$, $q$'\''$q$) || $q$'$q$
+                    end,
+                    ' ' order by dir)
+                  from unnest(missing) as dir
                 );
       end if;
     end;
