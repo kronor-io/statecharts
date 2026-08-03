@@ -65,10 +65,10 @@ select fsm.__find_scxml_files('/tmp/pg_statecharts_definitely_missing', false);
 
 create function cb_one(event_payload fsm_event_payload) returns void language sql as $$ select $$;
 
-select name, version from fsm.import_scxml_files(:'chart_a');
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_a');
 
 -- versions are padded on the way in
-select name, version from fsm.import_scxml_files(:'chart_b');
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_b');
 
 -- importing the same chart twice is an error by default
 select name from fsm.import_scxml_files(:'chart_a');

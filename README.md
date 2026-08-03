@@ -62,7 +62,7 @@ Events drive transitions; the machine is always in exactly one active state (or 
 |---|---|
 | PostgreSQL ≥ 13 | Tested on 13+ |
 | [`ltree`](https://www.postgresql.org/docs/current/ltree.html) extension | Ships with PostgreSQL |
-| [`semver`](https://pgxn.org/dist/semver/) extension | Available on PGXN / most managed providers |
+| [`semver`](https://pgxn.org/dist/semver/) extension | Only for the sqitch path; the extension needs no compiler and no `semver` |
 | [sqitch](https://sqitch.org) | Change-management tool used to deploy migrations |
 
 ---
@@ -116,8 +116,10 @@ sqitch revert -t postgresql://user:password@host/db_name
 ```
 
 Note that this path uses the [`semver`](https://pgxn.org/dist/semver/) PGXN
-extension for the version column, whereas the extension defines an equivalent
-`fsm.semver` domain in plain SQL and needs no such dependency.
+extension for the version column, whereas the extension defines an `fsm.semver`
+domain over `integer[]` in plain SQL and needs no such dependency. Versions
+therefore render as `{1,10,0}` rather than `1.10.0` under the extension; use
+`fsm.semver_text(version)` to format one.
 
 ---
 
@@ -128,7 +130,7 @@ erDiagram
     statechart {
         bigint id PK
         text name
-        semver version
+        integer[] version
         timestamptz created_at
     }
     state {
@@ -197,8 +199,10 @@ Insert a statechart, its states, and its transitions. The example below is the s
 
 ```sql
 -- 1. Register the statechart
+-- fsm.to_semver pads '1.0' out to 1.0.0. Under the sqitch path, where the
+-- version column is the semver extension's type, write '1.0'::semver instead.
 INSERT INTO fsm.statechart (id, name, version)
-VALUES (1, 'search_viewer', '1.0'::semver);
+VALUES (1, 'search_viewer', fsm.to_semver('1.0'));
 
 -- 2. Define the states
 INSERT INTO fsm.state
@@ -476,7 +480,7 @@ variously `shard`, `shard_id`, `shard_id_` and `shid`, and the machine is
 | `fsm.is_valid_transition(shard, machine_id, event_)` | Returns `true` if the event would trigger a transition from the current state. |
 | `fsm.get_initial_state(statechart)` | Returns the top-level initial state(s) of a statechart. |
 | `fsm.to_semver(version)` | Parses a version string into `fsm.semver`, padding `1` and `1.2` out to `1.0.0` and `1.2.0`. |
-| `fsm.semver_sort_key(version)` | Turns an `fsm.semver` into an `integer[]` so that versions sort numerically. |
+| `fsm.semver_text(version)` | Renders an `fsm.semver` as `1.10.0`. Casting to text instead gives the array form, `{1,10,0}`. |
 
 All functions live in the `fsm` schema.
 

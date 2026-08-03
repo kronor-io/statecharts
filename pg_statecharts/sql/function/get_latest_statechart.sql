@@ -4,9 +4,9 @@ $$
     select *
     from fsm.statechart
     where name = named
-    -- fsm.semver is a domain over text, so it has to be ordered by its numeric
-    -- components rather than lexicographically. See fsm.semver_sort_key.
-    order by fsm.semver_sort_key(version) desc
+    -- fsm.semver is an integer array, so this is already a numeric comparison
+    -- component by component: 1.10.0 outranks 1.9.0 because 10 > 9.
+    order by version desc
     limit 1
 $$ language sql
     strict

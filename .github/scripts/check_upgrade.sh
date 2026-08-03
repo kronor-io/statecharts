@@ -99,7 +99,7 @@ begin
   end if;
 
   -- ordering has to be numeric, not lexicographic
-  select version into latest from fsm.get_latest_statechart('flow');
+  select fsm.semver_text(version) into latest from fsm.get_latest_statechart('flow');
   if latest <> '2.0.0' then
     raise exception 'get_latest_statechart returned %, expected 2.0.0', latest;
   end if;
@@ -138,12 +138,12 @@ begin
   -- characters it always rejected
   insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
   select id, false, false, 'HasCapitals', 'S', id::text::ltree, (id::text || '.x')::ltree
-  from fsm.statechart where version = '1.9.0';
+  from fsm.statechart where version = fsm.to_semver('1.9.0');
 
   begin
     insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
     select id, false, false, 'not-allowed', 'S', id::text::ltree, (id::text || '.y')::ltree
-    from fsm.statechart where version = '1.9.0';
+    from fsm.statechart where version = fsm.to_semver('1.9.0');
     raise exception 'the constraint should still reject a hyphen';
   exception when check_violation then
     null;

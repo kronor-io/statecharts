@@ -3,8 +3,13 @@
 -- The only reason `semver` was ever a dependency is that `fsm.statechart`
 -- needs a version column that sorts correctly. `semver` is a C extension, so
 -- depending on it means every user needs a compiler and the PostgreSQL server
--- headers just to install pg_statecharts. A domain over text gets us the same
--- storage and the same textual representation with no build step at all.
+-- headers just to install pg_statecharts.
+--
+-- An integer array gets that for free. Arrays compare element by element, so
+-- `order by version desc` is correct with no helper function and no chance of
+-- a caller getting it wrong: 1.10.0 outranks 1.9.0 because 10 > 9. The cost is
+-- that the natural text form is '{1,10,0}' rather than '1.10.0'; use
+-- fsm.semver_text() when a version is being shown to a person.
 --
 -- Everything lives in the fsm schema. That matters for more than tidiness:
 -- the `semver` extension defines its own to_semver(text) in the schema it is
@@ -13,23 +18,34 @@
 -- that happens to use `semver` for unrelated reasons. The only unqualified
 -- object is the compatibility shim at the bottom of this file, and it is
 -- skipped when the name is already taken.
---
--- The one thing we lose is type level ordering: `order by version` on a text
--- domain is lexicographic, which would rank 1.9.0 above 1.10.0. Use
--- fsm.semver_sort_key() whenever versions need to be compared or ordered.
 
-create domain fsm.semver as text
-  check (value ~ '^\d+\.\d+\.\d+$');
+-- The check is deliberately thorough. A CHECK that evaluates to NULL passes,
+-- so `value[2] >= 0` alone would let array[1,null,3] through; and an array
+-- with a lower bound other than 1 compares unequal to the same elements
+-- starting at 1, which would let two rows that mean the same version both
+-- into the unique index on (name, version).
+create domain fsm.semver as integer[]
+  check (array_ndims(value) = 1
+         and array_lower(value, 1) = 1
+         and array_length(value, 1) = 3
+         and array_position(value, null) is null
+         and value[1] >= 0
+         and value[2] >= 0
+         and value[3] >= 0);
 
 comment on domain fsm.semver is $comment$
-    A semantic version of the form <major>.<minor>.<patch>, e.g. '1.10.0'.
+    A semantic version as a three element integer array: {major, minor, patch}.
+    '1.10.0' is array[1, 10, 0].
+
+    Stored as integers rather than text so that ordering is correct by default.
+    Arrays compare element by element, so `order by version desc` ranks 1.10.0
+    above 1.9.0 with no helper function involved.
+
+    Build one with fsm.to_semver('1.10.0') and render one with
+    fsm.semver_text(version). Casting to text gives the array form, '{1,10,0}'.
 
     Prerelease and build metadata suffixes (1.0.0-rc1, 1.0.0+build5) are not
     supported.
-
-    Beware that this is a domain over text, so the default ordering is
-    lexicographic and therefore wrong: '1.9.0' sorts after '1.10.0'. Order by
-    fsm.semver_sort_key(version) instead.
 $comment$;
 
 create or replace function fsm.to_semver(version text)
@@ -51,7 +67,7 @@ $$
     end if;
 
     -- pads with '.0' if the provided value has fewer than two dots, so that
-    -- both '1' and '1.2' are accepted and normalised to '1.0.0' and '1.2.0'
+    -- both '1' and '1.2' are accepted and normalised to 1.0.0 and 1.2.0
     padded := version || repeat('.0', 2 - dot_count);
 
     if padded !~ '^\d+\.\d+\.\d+$' then
@@ -59,36 +75,28 @@ $$
         using hint = 'expected digits separated by dots, e.g. 1.2.3';
     end if;
 
-    return padded::fsm.semver;
+    return string_to_array(padded, '.')::integer[]::fsm.semver;
   end;
 $$ language plpgsql immutable;
 
 comment on function fsm.to_semver(text) is $comment$
-    Casts text to fsm.semver, padding out omitted components so that '1' and
-    '1.2' become '1.0.0' and '1.2.0'.
+    Parses text into an fsm.semver, padding out omitted components so that '1'
+    and '1.2' become 1.0.0 and 1.2.0.
 
     This is the canonical name. An unqualified to_semver(text) is also created
     when that name is free, for the benefit of statechart migrations generated
     against older versions of pg_statecharts.
 $comment$;
 
-create or replace function fsm.semver_sort_key(version fsm.semver)
-returns integer[] as
+create or replace function fsm.semver_text(version fsm.semver)
+returns text as
 $$
-  select string_to_array(version, '.')::integer[]
+  select array_to_string(version, '.')
 $$ language sql immutable strict parallel safe;
 
-comment on function fsm.semver_sort_key(fsm.semver) is $comment$
-    Turns a version into an integer array so that it sorts numerically rather
-    than lexicographically. Integer arrays compare element by element, and a
-    shorter array sorts before a longer one that shares its leading elements,
-    so '1.10.0' correctly sorts above '1.9.0'.
-
-        order by fsm.semver_sort_key(version) desc
-
-    The function is immutable, so it can also be used to build an index:
-
-        create index on fsm.statechart (name, fsm.semver_sort_key(version));
+comment on function fsm.semver_text(fsm.semver) is $comment$
+    Renders a version the way people write it: fsm.semver_text(array[1,10,0])
+    is '1.10.0'. Casting to text instead gives the array form, '{1,10,0}'.
 $comment$;
 
 -- Compatibility shim.
@@ -101,8 +109,11 @@ $comment$;
 -- It is conditional because that is exactly the name `semver` occupies. If
 -- something else already provides to_semver(text) we leave it alone and carry
 -- on: a database that uses `semver` for its own purposes can still install
--- pg_statecharts, it just does not get the shim. Migrations generated from
--- 0.1.0 onwards call fsm.to_semver(...) and do not depend on it.
+-- pg_statecharts, it just does not get the shim. Note that in that case those
+-- 0.0.0 migrations cannot work whatever we do here -- `semver`'s to_semver
+-- returns its own type, which has no assignment cast to anything we could
+-- store -- so they have to be regenerated. Migrations generated from 0.1.0
+-- onwards call fsm.to_semver(...) and never needed the shim.
 --
 -- Objects created inside a DO block during CREATE EXTENSION are still
 -- recorded as members of the extension, so this is dropped by DROP EXTENSION

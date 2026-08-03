@@ -6,7 +6,13 @@
 create extension if not exists pg_statecharts cascade;
 
 -- padding of omitted components
-select fsm.to_semver('1'), fsm.to_semver('1.2'), fsm.to_semver('1.2.3');
+select fsm.semver_text(fsm.to_semver('1')) as one,
+       fsm.semver_text(fsm.to_semver('1.2')) as one_two,
+       fsm.semver_text(fsm.to_semver('1.2.3')) as one_two_three;
+
+-- the underlying representation is an integer array
+select fsm.to_semver('1.10.0') = array[1,10,0] as is_an_int_array,
+       fsm.to_semver('1.10.0')::text as raw_text;
 
 -- rejected versions
 do $$
@@ -25,48 +31,89 @@ exception when others then
   raise notice 'rejected banana';
 end $$;
 
+-- The domain check has to reject more than just the wrong length, because a
+-- CHECK that evaluates to NULL passes: a null element would slip through a
+-- bare "value[2] >= 0", and an array with a lower bound other than 1 compares
+-- unequal to the same elements starting at 1.
 do $$
 begin
-  perform '1.2'::fsm.semver;
+  perform array[1,2]::fsm.semver;
   raise exception 'should have been rejected';
 exception when check_violation then
-  raise notice 'domain rejects an unpadded literal';
+  raise notice 'domain rejects a two element array';
+end $$;
+
+do $$
+begin
+  perform array[1,null,3]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a null component';
+end $$;
+
+do $$
+begin
+  perform '[0:2]={1,10,0}'::integer[]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a zero based array';
+end $$;
+
+do $$
+begin
+  perform array[-1,0,0]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a negative component';
 end $$;
 
 select fsm.to_semver(null) is null as null_passes_through;
 
--- sorting has to be numeric, not lexicographic: 1.10.0 outranks 1.9.0
-select version
+-- Ordering is numeric with no helper function: this is the whole point of
+-- storing integers. 1.10.0 outranks 1.9.0 because 10 > 9.
+select fsm.semver_text(version) as rendered
 from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('1.2.3')), (fsm.to_semver('2.0.0'))) v(version)
-order by fsm.semver_sort_key(version) desc;
+order by version desc;
 
--- to_semver pads, so every key it produces has exactly three elements and
--- unequal lengths are unreachable through the domain. The array ordering rule
--- is what makes that padding safe rather than load bearing: integer arrays
--- compare element by element, and a shorter array that shares its leading
--- elements sorts first.
-select fsm.semver_sort_key(fsm.to_semver('1.10.1')) > fsm.semver_sort_key(fsm.to_semver('1.9'))
-         as numeric_not_lexicographic,
-       array_length(fsm.semver_sort_key(fsm.to_semver('1.9')), 1) = 3
-         as padded_to_three,
-       array[1,10,1] > array[1,9] as unequal_lengths_ordered,
-       array[1,10] < array[1,10,1] as shared_prefix_shorter_first;
+-- ...but ORDER BY resolves a bare name against the output column list first,
+-- so rendering to text AND aliasing it `version` shadows the integer column
+-- and silently restores lexicographic ordering. Locked in as a test because it
+-- is an easy mistake to make and looks identical at a glance.
+select string_agg(x, ' ') as lexicographic_when_alias_shadows
+from (
+  select fsm.semver_text(version) as version
+  from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('2.0.0'))) v(version)
+  order by version desc
+) shadowed(x);
 
--- get_latest_statechart has to agree
+select string_agg(x, ' ') as numeric_when_alias_differs
+from (
+  select fsm.semver_text(version) as rendered
+  from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('2.0.0'))) v(version)
+  order by version desc
+) unshadowed(x);
+
+-- get_latest_statechart orders the column directly
 insert into fsm.statechart (name, version) values
   ('chart', fsm.to_semver('1.9')), ('chart', fsm.to_semver('1.10.0')), ('chart', fsm.to_semver('2.0.0')), ('chart', fsm.to_semver('10.0.0'));
 
-select name, version from fsm.get_latest_statechart('chart');
+select name, fsm.semver_text(version) as version from fsm.get_latest_statechart('chart');
 
--- the sort key is immutable, so it can be indexed
-create index idx_statechart_version on fsm.statechart (name, fsm.semver_sort_key(version));
-drop index fsm.idx_statechart_version;
+-- and the plain column ordering agrees
+select fsm.semver_text(max(version)) as max_version from fsm.statechart where name = 'chart';
 
 -- equality still works the way generated migrations rely on
 select count(*) as found from fsm.statechart where name = 'chart' and version = fsm.to_semver('1.10.0');
 
--- fsm.semver is a domain over text, so it reaches clients as plain text
-select version::text = '2.0.0' as text_roundtrip from fsm.statechart where version = fsm.to_semver('2');
+-- 1.9 and 1.9.0 are the same version, so the unique index has to reject the
+-- second one rather than treating the padding as a distinguishing feature
+do $$
+begin
+  insert into fsm.statechart (name, version) values ('chart', fsm.to_semver('1.9.0'));
+  raise exception 'should have been rejected';
+exception when unique_violation then
+  raise notice 'unique index treats 1.9 and 1.9.0 as the same version';
+end $$;
 
 delete from fsm.statechart;
 

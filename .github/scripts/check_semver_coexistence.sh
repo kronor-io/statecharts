@@ -69,7 +69,7 @@ do $check$
     insert into fsm.statechart (name, version) values
       ('flow', fsm.to_semver('1.9')), ('flow', fsm.to_semver('1.10.0'));
 
-    select version into latest from fsm.get_latest_statechart('flow');
+    select fsm.semver_text(version) into latest from fsm.get_latest_statechart('flow');
     if latest <> '1.10.0' then
       raise exception 'get_latest_statechart returned %, expected 1.10.0', latest;
     end if;

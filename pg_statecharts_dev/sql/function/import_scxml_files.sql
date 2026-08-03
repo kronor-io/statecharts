@@ -87,8 +87,10 @@ $$
           );
 
         if missing_functions is not null then
+          -- rendered, because fsm.semver is an integer array and '{1,0,0}' is
+          -- not what anyone wants to read in an error message
           raise exception '% version % references functions that do not exist: %',
-            chart.name, chart.version, missing_functions
+            chart.name, fsm.semver_text(chart.version), missing_functions
             using hint = 'every on_entry and on_exit callback has to already '
                          'exist and take exactly one fsm_event_payload argument';
         end if;

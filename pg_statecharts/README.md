@@ -63,21 +63,39 @@ Two things to know:
   type, the upgrade stops with an error naming exactly what depends on it and
   changes nothing.
 
-- **Sorting versions changed.** `fsm.semver` is a domain over `text`, so plain
-  `order by version` is lexicographic and would rank `1.9.0` above `1.10.0`.
-  Inside the extension there was one such place and it has been fixed. If your
-  own code sorts or compares `fsm.statechart.version`, use the sort key
-  helper:
+- **The version column reads differently.** `fsm.semver` is a domain over
+  `integer[]`, so a column that used to show `1.10.0` now shows `{1,10,0}`.
+  The versions themselves are unchanged. Anything that displays a version, or
+  compares one against a string, needs `fsm.semver_text()`:
 
   ```sql
-  select * from fsm.statechart order by fsm.semver_sort_key(version) desc;
-
-  -- it is immutable, so it indexes too
-  create index on fsm.statechart (name, fsm.semver_sort_key(version));
+  select name, fsm.semver_text(version) from fsm.statechart;
   ```
 
-  Equality and `fsm.to_semver()` are unaffected, so
-  `where version = fsm.to_semver('1.2.3')` keeps working as before.
+  Ordering and equality both need no helper. `order by version desc` is a
+  numeric, component-by-component comparison, and
+  `where version = fsm.to_semver('1.2.3')` works as before:
+
+  ```sql
+  -- correct with no sort key: 1.10.0 outranks 1.9.0 because 10 > 9
+  select * from fsm.statechart order by version desc;
+  ```
+
+  Integers were chosen over text precisely so that this is right by default.
+  A text version column sorts lexicographically and would rank `1.9.0` above
+  `1.10.0` unless every caller remembered a helper.
+
+  There is one way to lose that. `ORDER BY` resolves a bare name against the
+  **output** columns first, so rendering to text and reusing the name `version`
+  shadows the integer column and quietly restores lexicographic ordering:
+
+  ```sql
+  -- WRONG: orders by the rendered text, giving 2.0.0, 1.9.0, 1.10.0
+  select fsm.semver_text(version) as version from fsm.statechart order by version desc;
+
+  -- right: the alias does not shadow the column
+  select fsm.semver_text(version) as rendered from fsm.statechart order by version desc;
+  ```
 
 Prerelease versions (`1.0.0-rc1`) are not supported. Neither the Rust
 implementation nor anything in this repository used them.
@@ -88,7 +106,12 @@ can be deleted from `$(pg_config --pkglibdir)`.
 ## Versions and the `semver` extension
 
 Everything version related lives in the `fsm` schema: the `fsm.semver` domain,
-`fsm.to_semver(text)` and `fsm.semver_sort_key(fsm.semver)`. Use those names.
+`fsm.to_semver(text)` and `fsm.semver_text(fsm.semver)`. Use those names.
+
+`fsm.semver` is a three element `integer[]` — `1.10.0` is `array[1, 10, 0]`.
+Storing integers rather than text is what makes `order by version desc` correct
+without a helper function, which is why the column no longer renders as
+`1.10.0` on its own. Nothing here needs the `semver` extension.
 
 One unqualified `to_semver(text)` is also created, because migrations generated
 by 0.0.0 call it. It is only a thin alias for `fsm.to_semver(text)`, and it is
