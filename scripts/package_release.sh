@@ -8,12 +8,13 @@
 #                                         that installs the runtime and, given
 #                                         --dev, the dev tooling too. Works on
 #                                         any PostgreSQL, anywhere.
-#   pg-statecharts-<PG>_<version>_all.deb the runtime extension, one per
+#   pg-statecharts-<PG>_<version>.deb     the runtime extension, one per
 #                                         PostgreSQL major version, only because
 #                                         Debian puts extensions under a
-#                                         versioned path. Architecture: all.
-#   pg-statecharts-dev-<PG>_<version>_all.deb
-#                                         the dev tooling, depending on the
+#                                         versioned path. Architecture: all,
+#                                         which the control file says; the
+#                                         file name does not repeat it.
+#   pg-statecharts-dev-<PG>_<version>.deb the dev tooling, depending on the
 #                                         runtime package of the same version.
 #
 # The dev tooling reads and writes files on the database host, which is why it
@@ -113,8 +114,8 @@ build_deb() {
 
   printf '%s\n' "$control" > "$deb/DEBIAN/control"
 
-  dpkg-deb --build --root-owner-group "$deb" "$OUT/${name}_${VERSION}_all.deb" >/dev/null
-  echo "  $OUT/${name}_${VERSION}_all.deb"
+  dpkg-deb --build --root-owner-group "$deb" "$OUT/${name}_${VERSION}.deb" >/dev/null
+  echo "  $OUT/${name}_${VERSION}.deb"
 }
 
 # 0.0.0, the Rust build, was packaged as plain "pg-statecharts" and installed

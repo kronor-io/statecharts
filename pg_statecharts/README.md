@@ -30,7 +30,7 @@ On Debian and Ubuntu there is a package per PostgreSQL major version on the
 contains only this extension, so it is the one to put on production servers:
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0_all.deb
+sudo dpkg -i pg-statecharts-18_0.1.0.deb
 ```
 
 The releases also carry a tarball with both extensions, whose top-level

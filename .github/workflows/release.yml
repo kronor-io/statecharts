@@ -63,8 +63,8 @@ jobs:
               docker exec smoke$pg pg_isready -U postgres >/dev/null 2>&1 && break
               sleep 1
             done
-            docker cp "dist/pg-statecharts-${pg}_${version}_all.deb" smoke$pg:/tmp/runtime.deb
-            docker cp "dist/pg-statecharts-dev-${pg}_${version}_all.deb" smoke$pg:/tmp/dev.deb
+            docker cp "dist/pg-statecharts-${pg}_${version}.deb" smoke$pg:/tmp/runtime.deb
+            docker cp "dist/pg-statecharts-dev-${pg}_${version}.deb" smoke$pg:/tmp/dev.deb
 
             # dev alone must fail on the missing dependency, and must not leave
             # anything behind that would make the later checks pass by accident
@@ -109,7 +109,7 @@ jobs:
             sleep 1
           done
           docker cp old.deb takeover:/tmp/old.deb
-          docker cp "dist/pg-statecharts-18_${version}_all.deb" takeover:/tmp/runtime.deb
+          docker cp "dist/pg-statecharts-18_${version}.deb" takeover:/tmp/runtime.deb
           docker exec takeover dpkg -i /tmp/old.deb
           docker exec takeover dpkg -i /tmp/runtime.deb
 

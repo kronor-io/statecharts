@@ -100,12 +100,12 @@ same files prepackaged:
 | Artifact | Contents |
 |---|---|
 | `pg_statecharts-<version>.tar.gz` | Both extensions. `./install.sh` installs the runtime; `./install.sh --dev` installs both. |
-| `pg-statecharts-<PG>_<version>_all.deb` | The runtime extension for PostgreSQL major `<PG>`. This is the one for production. |
-| `pg-statecharts-dev-<PG>_<version>_all.deb` | The dev tooling. Depends on the runtime package of the same version. |
+| `pg-statecharts-<PG>_<version>.deb` | The runtime extension for PostgreSQL major `<PG>`. This is the one for production. |
+| `pg-statecharts-dev-<PG>_<version>.deb` | The dev tooling. Depends on the runtime package of the same version. |
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0_all.deb                             # production
-sudo dpkg -i pg-statecharts-18_0.1.0_all.deb pg-statecharts-dev-18_0.1.0_all.deb  # development
+sudo dpkg -i pg-statecharts-18_0.1.0.deb                             # production
+sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # development
 ```
 
 See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including

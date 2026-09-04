@@ -28,7 +28,7 @@ two apart as well. The Debian package for this extension depends on the runtime
 package of the exact same version, so `dpkg` refuses to install it alone:
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0_all.deb pg-statecharts-dev-18_0.1.0_all.deb
+sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb
 ```
 
 The release tarball contains both extensions, and its top-level `install.sh`
