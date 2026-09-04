@@ -60,7 +60,7 @@ $$
         if recursive and entry !~ '^\.' then
           return query select * from fsm.__find_scxml_files(child, true);
         end if;
-      elsif entry ~ '\.scxml$' and not (recursive and entry ~ '^\.') then
+      elsif entry ~ '\.scxml$' and entry !~ '^\.' then
         return next child;
       end if;
     end loop;
@@ -100,6 +100,15 @@ $$
       raise exception 'refusing to write % because its content contains a carriage return or a control character',
         file_path
         using detail = 'those characters cannot survive the COPY based writer intact';
+    end if;
+
+    -- COPY quotes a line that is exactly "\." whatever the quote setting,
+    -- because unquoted it would be read back as end of data. Nothing this
+    -- extension generates contains such a line; refuse rather than corrupt.
+    if content ~ E'(^|\n)\\\\\\.(\n|$)' then
+      raise exception 'refusing to write % because a line consists of just a backslash and a dot',
+        file_path
+        using detail = 'COPY would quote that line and the file would no longer be written byte for byte';
     end if;
 
     if file_path !~ '/' then

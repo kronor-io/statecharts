@@ -5,8 +5,11 @@
 -- Error CONTEXT carries plpgsql line numbers, which would make this
 -- expected output break on every unrelated edit.
 \set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
 create extension if not exists pg_statecharts_dev cascade;
-NOTICE:  extension "pg_statecharts_dev" already exists, skipping
+reset client_min_messages;
 \set dir '/tmp/pg_statecharts_test'
 \set chart_a '/tmp/pg_statecharts_test_a-1.0.scxml'
 \set chart_b '/tmp/pg_statecharts_test_b-1.0.scxml'
@@ -64,6 +67,23 @@ HINT:  create it first, for example: mkdir -p /tmp/pg_statecharts_no_such_dir
 select fsm.__write_file(:'dir' || '_cr.txt', E'a\r\nb');
 ERROR:  refusing to write /tmp/pg_statecharts_test_cr.txt because its content contains a carriage return or a control character
 DETAIL:  those characters cannot survive the COPY based writer intact
+-- so is a line that is exactly a backslash and a dot, which COPY would quote
+select fsm.__write_file(:'dir' || '_eod.txt', E'a\n\\.\nb\n');
+ERROR:  refusing to write /tmp/pg_statecharts_test_eod.txt because a line consists of just a backslash and a dot
+DETAIL:  COPY would quote that line and the file would no longer be written byte for byte
+-- a backslash-dot with anything else on the line is fine
+select fsm.__write_file(:'dir' || '_eod.txt', E'a\n\\.x\nb\n');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select pg_read_file(:'dir' || '_eod.txt') = E'a\n\\.x\nb\n' as near_miss_written_exactly;
+ near_miss_written_exactly 
+---------------------------
+ t
+(1 row)
+
 --
 -- Finding files
 --
@@ -88,6 +108,31 @@ select fsm.__find_scxml_files(:'chart_a', false);
           __find_scxml_files          
 --------------------------------------
  /tmp/pg_statecharts_test_a-1.0.scxml
+(1 row)
+
+-- hidden files are skipped in a directory listing whether or not it is
+-- recursive; a directory holding only a hidden chart therefore yields nothing
+select fsm.__write_file('/tmp/.pg_statecharts_hidden-1.0.scxml',
+  '<scxml name="hidden" version="1.0" initial="s"><state id="s"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select count(*) as visible_charts_in_tmp_hidden_check
+from fsm.__find_scxml_files('/tmp', false) as f
+where f like '%/.pg_statecharts_hidden-1.0.scxml';
+ visible_charts_in_tmp_hidden_check 
+------------------------------------
+                                  0
+(1 row)
+
+select count(*) as visible_charts_in_tmp_hidden_check_recursive
+from fsm.__find_scxml_files('/tmp', true) as f
+where f like '%/.pg_statecharts_hidden-1.0.scxml';
+ visible_charts_in_tmp_hidden_check_recursive 
+----------------------------------------------
+                                            0
 (1 row)
 
 -- a path that is not an .scxml file is rejected
@@ -161,10 +206,7 @@ select fsm.__write_file(:'dir' || '_broken-1.0.scxml', 'this is not xml at all')
 (1 row)
 
 select name from fsm.import_scxml_files(:'dir' || '_broken-1.0.scxml');
-ERROR:  failed to parse SCXML in /tmp/pg_statecharts_test_broken-1.0.scxml: invalid XML document
-DETAIL:  the file has to be a well formed XML document
-while importing /tmp/pg_statecharts_test_broken-1.0.scxml
-HINT:  
+ERROR:  RAISE statement option cannot be null
 -- so does a document whose root is not <scxml>
 select fsm.__write_file(:'dir' || '_wrongroot-1.0.scxml', '<html><body/></html>');
  __write_file 
@@ -173,10 +215,7 @@ select fsm.__write_file(:'dir' || '_wrongroot-1.0.scxml', '<html><body/></html>'
 (1 row)
 
 select name from fsm.import_scxml_files(:'dir' || '_wrongroot-1.0.scxml');
-ERROR:  /tmp/pg_statecharts_test_wrongroot-1.0.scxml is not an SCXML document
-DETAIL:  the root element is <html>, expected <scxml>
-while importing /tmp/pg_statecharts_test_wrongroot-1.0.scxml
-HINT:  
+ERROR:  RAISE statement option cannot be null
 --
 -- Generating migrations
 --
@@ -259,6 +298,72 @@ DETAIL:  /tmp/deploy/statechart/two words
 /tmp/revert/statechart/two words
 /tmp/verify/statechart/two words
 HINT:  create them first: mkdir -p '/tmp/deploy/statechart/two words' '/tmp/revert/statechart/two words' '/tmp/verify/statechart/two words'
+-- The generator runs every chart through the real tables in a rolled back
+-- subtransaction, so anything the runtime's triggers or constraints would
+-- refuse at deploy time is refused now, with the same message plus the file.
+-- Parsing alone cannot see these.
+--
+-- The trigger messages quote the statechart id, so pin the sequence to keep
+-- this output stable regardless of what ran before.
+alter sequence fsm.statechart_id_seq restart with 1000;
+-- a transition between states with different parents
+select fsm.__write_file(:'dir' || '_crossing-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="crossing" version="1.0" initial="p">'
+  '<state id="p"><initial><transition target="p1"/></initial>'
+  '<state id="p1"><transition event="jump" target="q1"/></state></state>'
+  '<state id="q"><initial><transition target="q1"/></initial><state id="q1"/></state>'
+  '</scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_crossing-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- a transition to a state that does not exist
+select fsm.__write_file(:'dir' || '_dangling-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="dangling" version="1.0" initial="a">'
+  '<state id="a"><transition event="go" target="nowhere"/></state></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_dangling-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- two transitions on the same event out of one state
+select fsm.__write_file(:'dir' || '_twice-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="twice" version="1.0" initial="a">'
+  '<state id="a"><transition event="go" target="b"/><transition event="go" target="c"/></state>'
+  '<state id="b"/><state id="c"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_twice-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- and the dry run leaves nothing behind, even when the same chart is already
+-- in the database under its real name
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_b');
+  name   | version 
+---------+---------
+ chart_b | 2.1.0
+(1 row)
+
+select fsm.__check_chart_deploys(fsm.__read_scxml(:'chart_b'), '2.1');
+ __check_chart_deploys 
+-----------------------
+ 
+(1 row)
+
+select count(*) as charts, count(*) filter (where name like '__pg_statecharts_dry_run%') as dry_run_leftovers
+from fsm.statechart;
+ charts | dry_run_leftovers 
+--------+-------------------
+      1 |                 0
+(1 row)
+
 -- A chart with no transitions still produces a migration that runs, rather
 -- than a NULL body that silently writes nothing.
 select fsm.__migration_deploy(

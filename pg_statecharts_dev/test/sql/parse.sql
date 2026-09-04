@@ -3,7 +3,11 @@
 -- Error CONTEXT carries plpgsql line numbers, which would make this
 -- expected output break on every unrelated edit.
 \set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
 create extension if not exists pg_statecharts_dev cascade;
+reset client_min_messages;
 
 \set chart '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="orders.checkout" version="1.2.3" initial="pending"><state id="pending" name="Pending"><transition event="order.pay" target="paying"/><transition event="order.cancel" target="cancelled"/><onentry><script src="billing.reserve_stock"/><script src="notify_pending"/></onentry><onexit><script src="billing.release_hold"/></onexit></state><state id="paying" name="Paying"><initial><transition target="authorizing"/></initial><transition event="order.paid" target="fulfilling"/><state id="authorizing" name="Authorizing"><transition event="auth.ok" target="capturing"/></state><state id="capturing" name="Capturing"/></state><parallel id="fulfilling" name="Fulfilling"><transition event="order.done" target="complete"/><state id="packing" name="Packing"/><state id="invoicing" name="Invoicing"><initial><transition target="drafting"/></initial><state id="drafting" name="Drafting"/><state id="sent" name="Sent"/></state></parallel><final id="complete" name="Complete"><onentry><script src="audit.log_complete"/></onentry><onexit><script src="never.called"/></onexit></final><final id="cancelled" name="Cancelled"/></scxml>'
 
@@ -67,3 +71,26 @@ select fsm.scxml_states('<scxml name="c" version="1.0" initial="s"/>'::xml);
 
 -- no initial attribute
 select fsm.scxml_states('<scxml name="c" version="1.0"><state id="s"/></scxml>'::xml);
+
+-- A transition without an event, or without a target, is rejected by name.
+-- fsm.transition has NOT NULL on both, and a NULL here used to make the
+-- generator's string_agg silently drop the row from the migration.
+select fsm.scxml_transitions(
+  '<scxml name="c" version="1.0" initial="a">
+     <state id="a"><transition target="b"/><transition event="go" target="b"/></state>
+     <state id="b"/>
+   </scxml>'::xml);
+
+select fsm.scxml_transitions(
+  '<scxml name="c" version="1.0" initial="a">
+     <state id="a"><transition event="go" target="b"/></state>
+     <state id="b"><transition event="stop"/></state>
+   </scxml>'::xml);
+
+-- A transition inside <final> used to be silently excluded by the xpath; the
+-- runtime would refuse the chart at insert time, so the generator has to too.
+select fsm.scxml_transitions(
+  '<scxml name="c" version="1.0" initial="a">
+     <state id="a"><transition event="finish" target="b"/></state>
+     <final id="b"><transition event="x" target="a"/></final>
+   </scxml>'::xml);

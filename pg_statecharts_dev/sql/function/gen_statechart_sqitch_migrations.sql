@@ -193,6 +193,45 @@ $verify$
     || 'ROLLBACK;' || E'\n'
 $verify$ language sql immutable strict;
 
+-- Runs a chart through the real fsm tables and throws the result away.
+--
+-- Parsing catches what can be seen in the XML alone. Everything else that
+-- makes a chart invalid -- a transition between states with different parents,
+-- an event handled at two levels of the same subtree, a target that is not a
+-- state, two transitions on the same event out of one state -- is enforced by
+-- the triggers and constraints on fsm.state and fsm.transition. A generated
+-- migration that violates one of them would only fail at deploy time, far from
+-- the file that caused it. So the generator inserts the chart for real, lets
+-- every trigger fire, and then rolls the subtransaction back. The error is
+-- exactly the one deploying would have produced, raised now.
+--
+-- The chart is inserted under a throwaway name so that this works even when
+-- the same chart and version already sit in the database, as they do on a
+-- development machine that imported it earlier.
+create or replace function fsm.__check_chart_deploys(doc xml, chart_version text)
+returns void as
+$$
+  declare
+    chart_id bigint;
+  begin
+    begin
+      insert into fsm.statechart (name, version)
+      values ('__pg_statecharts_dry_run_' || md5(clock_timestamp()::text || random()::text),
+              fsm.to_semver(chart_version))
+      returning id into chart_id;
+
+      perform fsm.__insert_chart_definition(chart_id, doc);
+
+      -- The only way to abandon a subtransaction from plpgsql is to raise out
+      -- of the block. This private SQLSTATE is caught right below; anything
+      -- else raised above it is a genuine problem and propagates.
+      raise exception using errcode = 'P0DRY', message = 'dry run complete';
+    exception when sqlstate 'P0DRY' then
+      null;
+    end;
+  end;
+$$ language plpgsql volatile;
+
 -- Generates a sqitch migration for every .scxml file at source_path and adds
 -- it to the sqitch plan.
 create or replace function fsm.gen_statechart_sqitch_migrations(
@@ -265,21 +304,46 @@ $gen$
       doc xml;
       chart_name text;
       chart_version text;
+      err_message text;
+      err_detail text;
+      err_hint text;
+      err_code text;
     begin
       for file_path in
         select * from fsm.__find_scxml_files(source_path, recursive) order by 1
       loop
-        doc := fsm.__read_scxml(file_path);
-        chart_name := fsm.__scxml_name(doc, file_path);
-        chart_version := fsm.__scxml_version(doc, file_path);
+        begin
+          doc := fsm.__read_scxml(file_path);
+          chart_name := fsm.__scxml_name(doc, file_path);
+          chart_version := fsm.__scxml_version(doc, file_path);
 
-        insert into __pg_statecharts_migrations values (
-          file_path,
-          fsm.__migration_name(chart_name, chart_version),
-          fsm.__migration_deploy(doc, plan_project, chart_name, chart_version),
-          fsm.__migration_revert(plan_project, chart_name, chart_version),
-          fsm.__migration_verify(plan_project, chart_name, chart_version)
-        );
+          -- Reject now what deploying the migration would reject later.
+          perform fsm.__check_chart_deploys(doc, chart_version);
+
+          insert into __pg_statecharts_migrations values (
+            file_path,
+            fsm.__migration_name(chart_name, chart_version),
+            fsm.__migration_deploy(doc, plan_project, chart_name, chart_version),
+            fsm.__migration_revert(plan_project, chart_name, chart_version),
+            fsm.__migration_verify(plan_project, chart_name, chart_version)
+          );
+        exception when others then
+          -- Most messages above already name the file. The ones from the
+          -- parser and the triggers do not, so say which file was being
+          -- generated, the way the importer does.
+          get stacked diagnostics
+            err_code = returned_sqlstate,
+            err_message = message_text,
+            err_detail = pg_exception_detail,
+            err_hint = pg_exception_hint;
+
+          raise exception using
+            errcode = err_code,
+            message = err_message,
+            detail = trim(both E'\n' from
+              coalesce(err_detail, '') || E'\n' || format('while generating a migration from %s', file_path)),
+            hint = nullif(err_hint, '');
+        end;
       end loop;
     end;
 

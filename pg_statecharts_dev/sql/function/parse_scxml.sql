@@ -203,27 +203,68 @@ $$ language plpgsql immutable strict;
 
 -- All the transitions in a document, in document order.
 --
--- Only <state> and <parallel> carry transitions. Transitions inside <initial>
--- are excluded because they are how a compound state names its default child,
--- not real transitions, and <final> states are excluded because a final state
--- cannot be left.
+-- Transitions inside <initial> are excluded because they are how a compound
+-- state names its default child, not real transitions.
+--
+-- Every other <transition> has to carry both an event and a target, and must
+-- not sit inside a <final> state. Eventless and targetless transitions exist
+-- in SCXML but this implementation has never supported them: fsm.transition
+-- has NOT NULL on both columns, and a final state cannot be left. They are
+-- rejected here, by name, rather than left to surface as a bare NOT NULL
+-- violation from the importer or -- worse -- be dropped from a generated
+-- migration because string_agg skips the NULL row.
 create or replace function fsm.scxml_transitions(doc xml)
 returns setof fsm.scxml_transition as
 $$
-  select row(t.event, fsm.__xml_attr(states.node, 'id'), t.target)::fsm.scxml_transition
-  from unnest(
-    xpath('//*[local-name()="state" or local-name()="parallel"]', doc)
-  ) with ordinality as states(node, state_ord)
-  cross join lateral xmltable(
-    '/*/*[local-name()="transition"]'
-    passing states.node
-    columns
-      event text path '@event',
-      target text path '@target',
-      transition_ord for ordinality
-  ) as t
-  order by states.state_ord, t.transition_ord
-$$ language sql immutable strict;
+  declare
+    t record;
+  begin
+    for t in
+      select
+        tagged.tag,
+        fsm.__xml_attr(states.node, 'id') as source_state,
+        x.event,
+        x.target
+      from unnest(
+        xpath('//*[local-name()="state" or local-name()="parallel" or local-name()="final"]', doc)
+      ) with ordinality as states(node, state_ord)
+      cross join lateral (
+        select (xpath('local-name(/*)', states.node))[1]::text as tag
+      ) as tagged(tag)
+      cross join lateral xmltable(
+        '/*/*[local-name()="transition"]'
+        passing states.node
+        columns
+          event text path '@event',
+          target text path '@target',
+          transition_ord for ordinality
+      ) as x
+      order by states.state_ord, x.transition_ord
+    loop
+      if t.tag = 'final' then
+        raise exception 'final state "%" has a transition, but a final state cannot be left',
+          t.source_state
+          using hint = 'remove the <transition> from <final id="' || t.source_state || '">, '
+                       'or make it a <state>';
+      end if;
+
+      if t.event is null or t.event = '' then
+        raise exception 'a transition out of state "%" has no event attribute', t.source_state
+          using hint = 'every <transition> needs event="..." and target="..."; '
+                       'eventless transitions are not supported';
+      end if;
+
+      if t.target is null or t.target = '' then
+        raise exception 'the transition on event "%" out of state "%" has no target attribute',
+          t.event, t.source_state
+          using hint = 'every <transition> needs event="..." and target="..."; '
+                       'targetless (internal) transitions are not supported';
+      end if;
+
+      return next row(t.event, t.source_state, t.target)::fsm.scxml_transition;
+    end loop;
+  end;
+$$ language plpgsql immutable strict;
 
 -- Reads and parses a .scxml file, reporting which file failed rather than just
 -- that some XML somewhere was malformed.

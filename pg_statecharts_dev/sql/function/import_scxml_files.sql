@@ -6,6 +6,28 @@
 --
 -- Everything happens in the caller's transaction, so a failure part way
 -- through leaves nothing behind.
+-- Inserts the states and transitions of a parsed document under an existing
+-- fsm.statechart row.
+--
+-- This is the single place where a chart's rows are written, shared by the
+-- importer and by the migration generator's dry run, so that the two cannot
+-- come to different conclusions about whether a chart is valid: every trigger
+-- on fsm.state and fsm.transition fires here, for both.
+create or replace function fsm.__insert_chart_definition(chart_id bigint, doc xml)
+returns void as
+$$
+  insert into fsm.state (
+    statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit
+  )
+  select
+    chart_id, s.id, s.name, s.parent_id, s.is_initial, s.is_final, s.on_entry, s.on_exit
+  from fsm.scxml_states(doc) as s;
+
+  insert into fsm.transition (statechart_id, event, source_state, target_state)
+  select chart_id, t.event, t.source_state, t.target_state
+  from fsm.scxml_transitions(doc) as t;
+$$ language sql volatile;
+
 create or replace function fsm.import_scxml_files(
   source_path text,
   recursive boolean default false,
@@ -57,16 +79,7 @@ $$
           end;
         end if;
 
-        insert into fsm.state (
-          statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit
-        )
-        select
-          chart.id, s.id, s.name, s.parent_id, s.is_initial, s.is_final, s.on_entry, s.on_exit
-        from fsm.scxml_states(doc) as s;
-
-        insert into fsm.transition (statechart_id, event, source_state, target_state)
-        select chart.id, t.event, t.source_state, t.target_state
-        from fsm.scxml_transitions(doc) as t;
+        perform fsm.__insert_chart_definition(chart.id, doc);
 
         -- The on_entry/on_exit callbacks are looked up by name at run time, so
         -- a typo would otherwise only show up when the machine reaches that
@@ -108,7 +121,7 @@ $$
           message = err_message,
           detail = trim(both E'\n' from
             coalesce(err_detail, '') || E'\n' || format('while importing %s', file_path)),
-          hint = err_hint;
+          hint = nullif(err_hint, '');
       end;
     end loop;
   end;
