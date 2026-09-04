@@ -5,6 +5,10 @@ on:
   # Pull requests build and smoke test the very same packages and attach them
   # to the workflow run, so they can be tried out before anything is released.
   # Only a tag push publishes a GitHub release.
+  #
+  # TEMPORARY, for reviewing #44. Remove these two triggers once it is merged:
+  # releases should happen only when a version bump lands on master and gets
+  # tagged, and the packaging is exercised by the tag run itself.
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     branches:
