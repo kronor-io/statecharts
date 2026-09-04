@@ -69,7 +69,9 @@ Events drive transitions; the machine is always in exactly one active state (or 
 
 ## Installation
 
-There are two ways to install, and they are alternatives — pick one.
+There are two ways to install, and they are alternatives — pick one. A
+database already deployed with sqitch can be moved over to the extension; see
+[Migrating to 0.1.0](pg_statecharts/README.md#migrating-to-010).
 
 ### As an extension (recommended)
 
@@ -91,6 +93,20 @@ There is a second, optional extension for development machines,
 statecharts or into sqitch migrations. It reads and writes files on the
 database host, so it is kept separate and is not something to install in
 production.
+
+Each [release](https://github.com/kronor-io/statecharts/releases) ships the
+same files prepackaged:
+
+| Artifact | Contents |
+|---|---|
+| `pg_statecharts-<version>.tar.gz` | Both extensions. `./install.sh` installs the runtime; `./install.sh --dev` installs both. |
+| `pg-statecharts-<PG>_<version>_all.deb` | The runtime extension for PostgreSQL major `<PG>`. This is the one for production. |
+| `pg-statecharts-dev-<PG>_<version>_all.deb` | The dev tooling. Depends on the runtime package of the same version. |
+
+```bash
+sudo dpkg -i pg-statecharts-18_0.1.0_all.deb                             # production
+sudo dpkg -i pg-statecharts-18_0.1.0_all.deb pg-statecharts-dev-18_0.1.0_all.deb  # development
+```
 
 See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including
 how to upgrade from the older Rust build, and [example/](example) for a
@@ -489,6 +505,14 @@ All functions live in the `fsm` schema.
 ## Haskell SDK — SCXML to SQL Code Generator
 
 The `sdk/` directory contains a Haskell library and CLI tool that converts [SCXML](https://www.w3.org/TR/scxml/) files into sqitch-compatible SQL migration files, so you can design state machines visually and commit them to version control as code.
+
+The SDK targets the sqitch installation path only. The migrations it writes
+cast versions to the `semver` extension's type, which the extension path does
+not have, so they fail against a database running the extension. Projects on
+the extension generate migrations with
+[`pg_statecharts_dev`](pg_statecharts_dev) instead, and projects moving from
+sqitch to the extension rewrite the casts in their existing migrations once;
+see [Migrating to 0.1.0](pg_statecharts/README.md#migrating-to-010).
 
 ### Build
 

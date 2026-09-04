@@ -4,8 +4,8 @@ EXTENSION   = pg_statecharts
 SQL_PARTS   = $(shell cat sql/parts.txt)
 EXTVERSION  = $(shell sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" $(EXTENSION).control)
 
-# Upgrade scripts are handwritten rather than generated
-UPGRADE_SCRIPTS = $(wildcard sql/upgrade/$(EXTENSION)--*--*.sql)
+# Upgrade and adoption scripts are handwritten rather than generated
+UPGRADE_SCRIPTS = $(wildcard sql/upgrade/$(EXTENSION)--*.sql)
 
 BUILT     = $(EXTENSION)--$(EXTVERSION).sql
 DATA      = $(BUILT) $(notdir $(UPGRADE_SCRIPTS))
