@@ -22,6 +22,22 @@ create extension pg_statecharts_dev cascade;
 `cascade` pulls in `pg_statecharts`, which is the only dependency. Like the
 runtime half, this is pure SQL: nothing to compile, same files everywhere.
 
+The prepackaged versions on the
+[releases page](https://github.com/kronor-io/statecharts/releases) keep the
+two apart as well. The Debian package for this extension depends on the runtime
+package of the exact same version, so `dpkg` refuses to install it alone:
+
+```bash
+sudo dpkg -i pg-statecharts-18_0.1.0_all.deb pg-statecharts-dev-18_0.1.0_all.deb
+```
+
+The release tarball contains both extensions, and its top-level `install.sh`
+only installs this one when passed `--dev`:
+
+```bash
+./install.sh --dev
+```
+
 ## Permissions
 
 Both functions run inside the PostgreSQL server process, so **paths are
