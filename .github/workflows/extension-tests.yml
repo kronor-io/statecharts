@@ -38,7 +38,11 @@ jobs:
 
       - name: Start PostgreSQL
         run: |
-          chown -R postgres /__w
+          # installcheck runs as postgres and writes its results into the
+          # checkout. Only the checkout: /__w also holds the runner's own
+          # files, and taking those away from it fails every later step with
+          # "Access to the path .../event.json is denied".
+          chown -R postgres "$GITHUB_WORKSPACE"
           su postgres -c "/usr/lib/postgresql/${{ matrix.pg-version }}/bin/initdb -D /tmp/pgdata"
           su postgres -c "/usr/lib/postgresql/${{ matrix.pg-version }}/bin/pg_ctl -D /tmp/pgdata -l /tmp/pg.log -o '-k /tmp' start"
 

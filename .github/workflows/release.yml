@@ -94,13 +94,14 @@ jobs:
       # 0.0.0 was the Rust build, published as a plain "pg-statecharts" deb
       # that owns the same control file. The runtime package declares that it
       # replaces it, so installing over it has to remove the old package rather
-      # than fail on the file conflict. The 0.0.0 release only has PG 18 for
-      # x86_64, which is what the runner is.
+      # than fail on the file conflict. The 0.0.0 deb is vendored under
+      # .github/fixtures rather than downloaded, so this does not depend on any
+      # release staying published; it is the PG 18 x86_64 build, which is what
+      # the runner is.
       - name: Smoke test taking over the 0.0.0 package
         run: |
           set -eu
-          curl -fsSL -o old.deb \
-            https://github.com/kronor-io/statecharts/releases/download/v0.0.0/pg_statecharts_0.0.0_pg18_Linux_x86_64.deb
+          cp .github/fixtures/pg_statecharts_0.0.0_pg18_Linux_x86_64.deb old.deb
           docker run --rm -d --name takeover \
             -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:18
           for i in $(seq 30); do
