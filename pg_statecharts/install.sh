@@ -19,9 +19,18 @@ set -eu
 
 cd "$(dirname "$0")"
 
-EXTENSION=$(basename "$(pwd)")
+# The control file names the extension, so a renamed checkout still works and
+# this script stays identical for both extensions.
+CONTROL=
+for f in ./*.control; do CONTROL=$f; done
+if [ ! -f "$CONTROL" ]; then
+  echo "error: no .control file next to $0" >&2
+  exit 1
+fi
+EXTENSION=$(basename "$CONTROL" .control)
+
 PG_CONFIG=${1:-pg_config}
-VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" "$EXTENSION.control")
+VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" "$CONTROL")
 
 if [ -z "${DEST:-}" ]; then
   if ! command -v "$PG_CONFIG" >/dev/null 2>&1; then

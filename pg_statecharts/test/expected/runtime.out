@@ -2,8 +2,11 @@
 -- Error CONTEXT carries plpgsql line numbers, which would make this
 -- expected output break on every unrelated edit.
 \set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
 create extension if not exists pg_statecharts cascade;
-NOTICE:  extension "pg_statecharts" already exists, skipping
+reset client_min_messages;
 create table lightswitch (
   id bigint not null generated always as identity primary key,
   state_machine_id bigint not null,

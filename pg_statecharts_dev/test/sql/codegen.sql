@@ -7,7 +7,11 @@
 -- Error CONTEXT carries plpgsql line numbers, which would make this
 -- expected output break on every unrelated edit.
 \set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
 create extension if not exists pg_statecharts_dev cascade;
+reset client_min_messages;
 
 \set chart '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="orders.checkout" version="1.2.3" initial="pending"><state id="pending" name="Pending"><transition event="order.pay" target="paying"/><onentry><script src="billing.reserve_stock"/><script src="notify_pending"/></onentry><onexit><script src="billing.release_hold"/></onexit></state><state id="paying" name="Paying"><initial><transition target="authorizing"/></initial><state id="authorizing" name="Authorizing"/></state><final id="done" name="Done"/></scxml>'
 
