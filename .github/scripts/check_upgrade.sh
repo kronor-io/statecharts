@@ -194,4 +194,60 @@ end
 $check$;
 SQL
 
+echo "--- checking the upgrade names prerelease versions instead of failing on a cast ---"
+cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control.keep"
+cat > "$EXT_DIR/pg_statecharts.control" <<'CONTROL'
+default_version = '0.0.0'
+relocatable = false
+superuser = true
+requires = 'ltree, semver'
+CONTROL
+
+$PSQL -c "drop database if exists upgrade_check3"
+$PSQL -c "create database upgrade_check3"
+$PSQL -d upgrade_check3 <<'SQL'
+create extension pg_statecharts version '0.0.0' cascade;
+insert into fsm.statechart (name, version) values
+  ('flow', to_semver('1.0.0')), ('flow', to_semver('1.1.0-rc1')), ('other', to_semver('2.0.0+build5'));
+SQL
+
+cp "$EXT_DIR/pg_statecharts.control.keep" "$EXT_DIR/pg_statecharts.control"
+rm -f "$EXT_DIR/pg_statecharts.control.keep"
+
+output=$($PSQL -d upgrade_check3 -c "alter extension pg_statecharts update" 2>&1 || true)
+echo "$output"
+if ! grep -q 'prerelease or build suffix' <<<"$output"; then
+  echo "ERROR: expected the upgrade to refuse because of the prerelease versions" >&2
+  exit 1
+fi
+if ! grep -q 'flow 1.1.0-rc1' <<<"$output" || ! grep -q 'other 2.0.0+build5' <<<"$output"; then
+  echo "ERROR: the refusal should list every offending name and version" >&2
+  exit 1
+fi
+if grep -q 'invalid input syntax' <<<"$output"; then
+  echo "ERROR: the raw cast error leaked through" >&2
+  exit 1
+fi
+
+$PSQL -d upgrade_check3 <<'SQL'
+do $check$
+begin
+  if (select extversion from pg_extension where extname = 'pg_statecharts') <> '0.0.0' then
+    raise exception 'the refused upgrade should have rolled back';
+  end if;
+  raise notice 'prerelease versions refused with a list and rolled back';
+end
+$check$;
+SQL
+
+# following the hint has to make the upgrade go through
+$PSQL -d upgrade_check3 -c "update fsm.statechart set version = to_semver('1.1.0') where version = to_semver('1.1.0-rc1')"
+$PSQL -d upgrade_check3 -c "update fsm.statechart set version = to_semver('2.0.0') where name = 'other'"
+$PSQL -d upgrade_check3 -c "alter extension pg_statecharts update"
+if [ "$($PSQL -tA -d upgrade_check3 -c "select string_agg(fsm.semver_text(version), ' ' order by name, version) from fsm.statechart")" != "1.0.0 1.1.0 2.0.0" ]; then
+  echo "ERROR: renamed versions did not convert as expected" >&2
+  exit 1
+fi
+echo "after renaming the versions the upgrade succeeds"
+
 echo "all upgrade checks passed"

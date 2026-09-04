@@ -212,8 +212,10 @@ Two things to know:
   select fsm.semver_text(version) as rendered from fsm.statechart order by version desc;
   ```
 
-Prerelease versions (`1.0.0-rc1`) are not supported. Neither the Rust
-implementation nor anything in this repository used them.
+Prerelease versions (`1.0.0-rc1`) are not supported. 0.0.0 accepted them,
+because the `semver` extension does, so the upgrade checks for them first and
+refuses with a list of the offending rows rather than failing part way through.
+Rename those versions to plain `major.minor.patch` and run the update again.
 
 After upgrading, `pg_statecharts.so` is no longer referenced by anything and
 can be deleted from `$(pg_config --pkglibdir)`.

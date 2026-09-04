@@ -24,10 +24,15 @@
 -- with a lower bound other than 1 compares unequal to the same elements
 -- starting at 1, which would let two rows that mean the same version both
 -- into the unique index on (name, version).
+--
+-- The length test is cardinality(), not array_length(): for the empty array
+-- '{}' array_ndims, array_lower and array_length are all NULL, so a check
+-- built only from those is NULL for it and lets it through. cardinality('{}')
+-- is 0, which makes that term FALSE and the whole conjunction with it.
 create domain fsm.semver as integer[]
   check (array_ndims(value) = 1
          and array_lower(value, 1) = 1
-         and array_length(value, 1) = 3
+         and cardinality(value) = 3
          and array_position(value, null) is null
          and value[1] >= 0
          and value[2] >= 0

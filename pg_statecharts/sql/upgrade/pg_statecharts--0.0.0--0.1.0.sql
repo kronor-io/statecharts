@@ -44,7 +44,7 @@ alter table fsm.state add constraint id_must_be_alphanumeric
 create domain fsm.semver as integer[]
   check (array_ndims(value) = 1
          and array_lower(value, 1) = 1
-         and array_length(value, 1) = 3
+         and cardinality(value) = 3
          and array_position(value, null) is null
          and value[1] >= 0
          and value[2] >= 0
@@ -65,12 +65,37 @@ comment on domain fsm.semver is $comment$
     supported.
 $comment$;
 
+-- fsm.semver has no room for prerelease or build metadata suffixes, but 0.0.0
+-- stored versions in the semver extension's type, which accepts 1.0.0-rc1 and
+-- 1.0.0+build5 happily. Converting such a row would fail inside the ALTER
+-- below with a bare "invalid input syntax for type integer", naming nothing.
+-- Find them first and say which rows they are.
+do $precheck$
+  declare
+    offending text;
+  begin
+    select string_agg(format('%s %s', name, version::text), E'\n' order by name, version::text)
+    into offending
+    from fsm.statechart
+    where version::text !~ '^\d+\.\d+\.\d+$';
+
+    if offending is not null then
+      raise exception 'cannot upgrade: some statechart versions carry a prerelease or build suffix, which fsm.semver does not support'
+        using detail = offending,
+              hint = 'rename those versions to plain major.minor.patch first, e.g. '
+                     'update fsm.statechart set version = to_semver(''1.0.0'') '
+                     'where name = ''...'' and version = to_semver(''1.0.0-rc1''), '
+                     'then run ALTER EXTENSION pg_statecharts UPDATE again';
+    end if;
+  end;
+$precheck$;
+
 -- Rewrites the column in place. The (name, version) unique index is rebuilt
 -- automatically as part of the type change.
 --
 -- semver only offers an explicit cast to text, which is fine inside a USING
--- expression, and the 0.0.0 constraint means every stored value already has
--- exactly three numeric components.
+-- expression, and the check above means every stored value has exactly three
+-- numeric components.
 alter table fsm.statechart
   alter column version type fsm.semver
   using string_to_array(version::text, '.')::integer[]::fsm.semver;

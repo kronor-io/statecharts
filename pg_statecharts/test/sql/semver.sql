@@ -3,7 +3,11 @@
 -- Error CONTEXT carries plpgsql line numbers, which would make this
 -- expected output break on every unrelated edit.
 \set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
 create extension if not exists pg_statecharts cascade;
+reset client_min_messages;
 
 -- padding of omitted components
 select fsm.semver_text(fsm.to_semver('1')) as one,
@@ -65,6 +69,16 @@ begin
   raise exception 'should have been rejected';
 exception when check_violation then
   raise notice 'domain rejects a negative component';
+end $$;
+
+-- array_ndims, array_lower and array_length are all NULL for '{}', so a check
+-- built only from them is NULL and passes. cardinality('{}') is 0.
+do $$
+begin
+  perform '{}'::integer[]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects an empty array';
 end $$;
 
 select fsm.to_semver(null) is null as null_passes_through;
