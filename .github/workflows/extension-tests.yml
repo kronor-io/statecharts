@@ -9,6 +9,9 @@ on:
 
 name: Extension Tests
 
+permissions:
+  contents: read
+
 jobs:
   regress:
     name: pg${{ matrix.pg-version }}
@@ -63,7 +66,7 @@ jobs:
           cat /tmp/pg.log || true
 
   upgrade:
-    name: upgrade from 0.0.0
+    name: upgrade from 0.0.0 and from sqitch
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     container: postgres:18
@@ -75,10 +78,10 @@ jobs:
       - name: Install build tools
         run: |
           apt-get -qq update
-          apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient ca-certificates
+          apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient ca-certificates sqitch
 
-      # The 0.0.0 install used the semver extension, so the upgrade path can
-      # only be exercised with it present.
+      # Both the 0.0.0 install and the sqitch deployment used the semver
+      # extension, so the upgrade paths can only be exercised with it present.
       - name: Install semver
         run: pgxn install semver
 
@@ -95,6 +98,15 @@ jobs:
           PGHOST: /tmp
           PGUSER: postgres
         run: .github/scripts/check_upgrade.sh
+
+      # A database deployed from deploy/ with sqitch has every object already;
+      # the 'sqitch' version adopts them and the update then follows the 0.0.0
+      # path. The result has to own exactly what a fresh install owns.
+      - name: Check a sqitch deployment can be adopted and upgraded
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: .github/scripts/check_sqitch_adoption.sh
 
       # Nothing of ours is called to_semver in the same schema as semver's own,
       # so the two extensions can now be installed side by side.
