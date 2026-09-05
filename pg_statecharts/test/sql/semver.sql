@@ -1,0 +1,147 @@
+-- The fsm.semver domain that replaced the semver extension.
+
+-- Error CONTEXT carries plpgsql line numbers, which would make this
+-- expected output break on every unrelated edit.
+\set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
+create extension if not exists pg_statecharts cascade;
+reset client_min_messages;
+
+-- padding of omitted components
+select fsm.semver_text(fsm.to_semver('1')) as one,
+       fsm.semver_text(fsm.to_semver('1.2')) as one_two,
+       fsm.semver_text(fsm.to_semver('1.2.3')) as one_two_three;
+
+-- the underlying representation is an integer array
+select fsm.to_semver('1.10.0') = array[1,10,0] as is_an_int_array,
+       fsm.to_semver('1.10.0')::text as raw_text;
+
+-- rejected versions
+do $$
+begin
+  perform fsm.to_semver('1.2.3.4');
+  raise exception 'should have been rejected';
+exception when others then
+  raise notice 'rejected 1.2.3.4';
+end $$;
+
+do $$
+begin
+  perform fsm.to_semver('banana');
+  raise exception 'should have been rejected';
+exception when others then
+  raise notice 'rejected banana';
+end $$;
+
+-- The domain check has to reject more than just the wrong length, because a
+-- CHECK that evaluates to NULL passes: a null element would slip through a
+-- bare "value[2] >= 0", and an array with a lower bound other than 1 compares
+-- unequal to the same elements starting at 1.
+do $$
+begin
+  perform array[1,2]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a two element array';
+end $$;
+
+do $$
+begin
+  perform array[1,null,3]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a null component';
+end $$;
+
+do $$
+begin
+  perform '[0:2]={1,10,0}'::integer[]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a zero based array';
+end $$;
+
+do $$
+begin
+  perform array[-1,0,0]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects a negative component';
+end $$;
+
+-- array_ndims, array_lower and array_length are all NULL for '{}', so a check
+-- built only from them is NULL and passes. cardinality('{}') is 0.
+do $$
+begin
+  perform '{}'::integer[]::fsm.semver;
+  raise exception 'should have been rejected';
+exception when check_violation then
+  raise notice 'domain rejects an empty array';
+end $$;
+
+select fsm.to_semver(null) is null as null_passes_through;
+
+-- Ordering is numeric with no helper function: this is the whole point of
+-- storing integers. 1.10.0 outranks 1.9.0 because 10 > 9.
+select fsm.semver_text(version) as rendered
+from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('1.2.3')), (fsm.to_semver('2.0.0'))) v(version)
+order by version desc;
+
+-- ...but ORDER BY resolves a bare name against the output column list first,
+-- so rendering to text AND aliasing it `version` shadows the integer column
+-- and silently restores lexicographic ordering. Locked in as a test because it
+-- is an easy mistake to make and looks identical at a glance.
+select string_agg(x, ' ') as lexicographic_when_alias_shadows
+from (
+  select fsm.semver_text(version) as version
+  from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('2.0.0'))) v(version)
+  order by version desc
+) shadowed(x);
+
+select string_agg(x, ' ') as numeric_when_alias_differs
+from (
+  select fsm.semver_text(version) as rendered
+  from (values (fsm.to_semver('1.9.0')), (fsm.to_semver('1.10.0')), (fsm.to_semver('2.0.0'))) v(version)
+  order by version desc
+) unshadowed(x);
+
+-- get_latest_statechart orders the column directly
+insert into fsm.statechart (name, version) values
+  ('chart', fsm.to_semver('1.9')), ('chart', fsm.to_semver('1.10.0')), ('chart', fsm.to_semver('2.0.0')), ('chart', fsm.to_semver('10.0.0'));
+
+select name, fsm.semver_text(version) as version from fsm.get_latest_statechart('chart');
+
+-- and the plain column ordering agrees
+select fsm.semver_text(max(version)) as max_version from fsm.statechart where name = 'chart';
+
+-- equality still works the way generated migrations rely on
+select count(*) as found from fsm.statechart where name = 'chart' and version = fsm.to_semver('1.10.0');
+
+-- 1.9 and 1.9.0 are the same version, so the unique index has to reject the
+-- second one rather than treating the padding as a distinguishing feature
+do $$
+begin
+  insert into fsm.statechart (name, version) values ('chart', fsm.to_semver('1.9.0'));
+  raise exception 'should have been rejected';
+exception when unique_violation then
+  raise notice 'unique index treats 1.9 and 1.9.0 as the same version';
+end $$;
+
+delete from fsm.statechart;
+
+-- The unqualified compatibility shim, which migrations generated by 0.0.0
+-- call. Nothing else in this database owns the name, so it was created.
+select to_semver('1.2') = fsm.to_semver('1.2') as shim_agrees;
+
+-- It belongs to the extension despite being created inside a DO block, so
+-- DROP EXTENSION takes it with it rather than leaving it behind.
+select exists (
+  select 1
+  from pg_depend d
+  join pg_extension e on e.oid = d.refobjid
+  where d.refclassid = 'pg_extension'::regclass
+    and e.extname = 'pg_statecharts'
+    and d.objid = to_regprocedure('to_semver(text)')::oid
+) as shim_belongs_to_extension;

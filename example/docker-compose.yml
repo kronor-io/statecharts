@@ -1,0 +1,39 @@
+services:
+  db:
+    build:
+      context: ..
+      dockerfile: example/postgres.Dockerfile
+    # Run the database as the user that started docker compose.
+    #
+    # fsm.gen_statechart_sqitch_migrations writes the migration files from
+    # inside the container. Without this they would be created by the
+    # container's postgres user and land in your repository owned by uid 999,
+    # which you then cannot edit. Running the server as you means the generated
+    # files simply belong to you.
+    #
+    # UID and GID come from the .env file, which `make setup` writes.
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Mounted at /var/lib/postgresql rather than at the data directory
+      # itself: the official image ships that directory mode 1777 precisely so
+      # that it can be run as an arbitrary uid.
+      - dbdata:/var/lib/postgresql
+      - .:/repo
+    environment:
+      POSTGRES_PASSWORD: hunter2
+      # An arbitrary uid has no /etc/passwd entry, so psql cannot guess the
+      # database user from the OS user.
+      PGUSER: postgres
+      # ...and for the same reason sqitch cannot work out who is deploying.
+      # It used to read that from ~/.sqitch/sqitch.conf, but mounting yours
+      # at /root/.sqitch no longer helps: the container is not running as
+      # root and there is no home directory to look in. `make setup` writes
+      # these two into .env from your git config.
+      SQITCH_FULLNAME: ${SQITCH_FULLNAME:-${USER}}
+      SQITCH_EMAIL: ${SQITCH_EMAIL:-${USER}@localhost}
+    working_dir: /repo
+
+volumes:
+  dbdata:

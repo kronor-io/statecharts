@@ -1,0 +1,275 @@
+#!/bin/bash
+# Checks that an existing 0.0.0 (Rust) install upgrades cleanly to 0.1.0.
+#
+# 0.0.0 depended on the semver extension, so the test has to create the
+# extension while a 0.0.0-era control file is in place, then swap in the real
+# one before running the update -- which is exactly what installing the new
+# files over the old ones does on a real machine.
+set -eu
+
+EXT_DIR="$(pg_config --sharedir)/extension"
+PSQL="psql -v ON_ERROR_STOP=1 -X -q"
+VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" pg_statecharts/pg_statecharts.control)
+
+cleanup() {
+  cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control" 2>/dev/null || true
+  rm -f "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts--0.0.0.sql"
+}
+trap cleanup EXIT
+
+cp pg_statecharts/test/fixtures/pg_statecharts--0.0.0.sql "$EXT_DIR/"
+cp "$EXT_DIR/pg_statecharts.control" "$EXT_DIR/pg_statecharts.control.real"
+
+cat > "$EXT_DIR/pg_statecharts.control" <<'CONTROL'
+default_version = '0.0.0'
+relocatable = false
+superuser = true
+requires = 'ltree, semver'
+CONTROL
+
+echo "--- installing 0.0.0 with data ---"
+$PSQL -c "drop database if exists upgrade_check"
+$PSQL -c "create database upgrade_check"
+$PSQL -d upgrade_check <<'SQL'
+create extension pg_statecharts version '0.0.0' cascade;
+
+-- The semver extension's script does "SET client_min_messages TO warning" and
+-- never resets it, so installing it silently mutes every NOTICE for the rest
+-- of the session. Put it back so the diagnostics below are visible.
+reset client_min_messages;
+
+insert into fsm.statechart (name, version) values
+  ('flow', to_semver('1.9')), ('flow', to_semver('1.10.0')), ('flow', to_semver('2.0.0'));
+
+insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+select id, true, false, 'lowercase_only', 'S', id::text::ltree, (id::text || '.lowercase_only')::ltree
+from fsm.statechart where version = '1.9.0';
+
+-- 0.0.0 rejects this; after the upgrade it must be accepted. Asserted rather
+-- than merely reported, so that the check cannot pass by staying quiet.
+do $pre$
+begin
+  begin
+    insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+    select id, false, false, 'HasCapitals', 'S', id::text::ltree, (id::text || '.x')::ltree
+    from fsm.statechart where version = '1.9.0';
+    raise exception '0.0.0 was expected to reject a state id with capital letters';
+  exception when check_violation then
+    null;
+  end;
+
+  if exists (select 1 from fsm.state where id = 'HasCapitals') then
+    raise exception 'the capitalised state id should not have been inserted';
+  end if;
+
+  raise notice 'confirmed: 0.0.0 rejects state ids with capital letters';
+end
+$pre$;
+SQL
+
+# put the real control file back, as installing the new release would
+cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control"
+
+echo "--- upgrading ---"
+$PSQL -d upgrade_check -c "alter extension pg_statecharts update"
+
+echo "--- verifying ---"
+$PSQL -d upgrade_check -v version="$VERSION" <<'SQL'
+-- psql does not substitute variables inside dollar quotes, so hand the
+-- expected version to the DO block through a setting instead.
+select set_config('check.version', :'version', false) as configured \gset
+
+do $check$
+declare
+  latest text;
+  kept int;
+  not_dumped text;
+begin
+  if (select extversion from pg_extension where extname = 'pg_statecharts') <> current_setting('check.version') then
+    raise exception 'extension was not upgraded to %', current_setting('check.version');
+  end if;
+
+  -- 0.0.0 never registered its tables with pg_dump, which is why backups
+  -- taken under it hold no machines. The upgrade has to register every table
+  -- and sequence in fsm.
+  select string_agg(c.oid::regclass::text, ', ' order by c.oid::regclass::text)
+  into not_dumped
+  from pg_class c
+  where c.relnamespace = 'fsm'::regnamespace
+    and c.relkind in ('r', 'S')
+    and not exists (
+      select 1 from pg_extension e
+      where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
+    );
+  if not_dumped is not null then
+    raise exception 'not registered for pg_dump after the upgrade: %', not_dumped;
+  end if;
+
+  if exists (select 1 from pg_extension where extname = 'semver') then
+    raise exception 'the semver extension should have been dropped';
+  end if;
+
+  if (select atttypid::regtype::text
+      from pg_attribute
+      where attrelid = 'fsm.statechart'::regclass and attname = 'version') <> 'fsm.semver' then
+    raise exception 'version column was not converted to fsm.semver';
+  end if;
+
+  select count(*) into kept from fsm.statechart;
+  if kept <> 3 then
+    raise exception 'expected 3 statecharts after the upgrade, found %', kept;
+  end if;
+
+  -- ordering has to be numeric, not lexicographic
+  select fsm.semver_text(version) into latest from fsm.get_latest_statechart('flow');
+  if latest <> '2.0.0' then
+    raise exception 'get_latest_statechart returned %, expected 2.0.0', latest;
+  end if;
+
+  -- The shape that migrations generated by 0.0.0 rely on: an unqualified
+  -- to_semver(). The semver extension owned that name before the upgrade, so
+  -- this only resolves if the compatibility shim replaced it.
+  if not exists (select 1 from fsm.statechart where name = 'flow' and version = to_semver('1.10.0')) then
+    raise exception 'to_semver() equality no longer matches stored versions';
+  end if;
+
+  if not exists (select 1 from fsm.statechart where name = 'flow' and version = fsm.to_semver('1.10.0')) then
+    raise exception 'fsm.to_semver() equality does not match stored versions';
+  end if;
+
+  -- The shim is created inside a DO block, which must not stop it being an
+  -- extension member: otherwise DROP EXTENSION would leave it behind.
+  if not exists (
+    select 1 from pg_depend d
+    join pg_extension e on e.oid = d.refobjid
+    where d.refclassid = 'pg_extension'::regclass
+      and e.extname = 'pg_statecharts'
+      and d.objid = to_regprocedure('to_semver(text)')::oid
+  ) then
+    raise exception 'the to_semver() shim is not owned by the extension';
+  end if;
+
+  if exists (
+    select 1 from pg_proc
+    where proname in ('import_scxml_files', 'gen_statechart_sqitch_migrations')
+  ) then
+    raise exception 'the old file handling functions should have been dropped';
+  end if;
+
+  -- the repaired constraint has to accept capitals, and still reject the
+  -- characters it always rejected
+  insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+  select id, false, false, 'HasCapitals', 'S', id::text::ltree, (id::text || '.x')::ltree
+  from fsm.statechart where version = fsm.to_semver('1.9.0');
+
+  begin
+    insert into fsm.state (statechart_id, is_initial, is_final, id, name, parent_path, node_path)
+    select id, false, false, 'not-allowed', 'S', id::text::ltree, (id::text || '.y')::ltree
+    from fsm.statechart where version = fsm.to_semver('1.9.0');
+    raise exception 'the constraint should still reject a hyphen';
+  exception when check_violation then
+    null;
+  end;
+
+  -- the row that existed before the upgrade survived the revalidation
+  if not exists (select 1 from fsm.state where id = 'lowercase_only') then
+    raise exception 'existing state rows did not survive the constraint change';
+  end if;
+
+  raise notice 'upgrade from 0.0.0 verified';
+end
+$check$;
+SQL
+
+echo "--- checking the upgrade refuses to break other users of semver ---"
+cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control.keep"
+cat > "$EXT_DIR/pg_statecharts.control" <<'CONTROL'
+default_version = '0.0.0'
+relocatable = false
+superuser = true
+requires = 'ltree, semver'
+CONTROL
+
+$PSQL -c "drop database if exists upgrade_check2"
+$PSQL -c "create database upgrade_check2"
+$PSQL -d upgrade_check2 <<'SQL'
+create extension pg_statecharts version '0.0.0' cascade;
+create table my_app_releases (id int, v semver);
+SQL
+
+cp "$EXT_DIR/pg_statecharts.control.keep" "$EXT_DIR/pg_statecharts.control"
+rm -f "$EXT_DIR/pg_statecharts.control.keep"
+
+if $PSQL -d upgrade_check2 -c "alter extension pg_statecharts update" 2>/dev/null; then
+  echo "ERROR: the upgrade should have refused while semver was still in use" >&2
+  exit 1
+fi
+
+$PSQL -d upgrade_check2 <<'SQL'
+do $check$
+begin
+  if (select extversion from pg_extension where extname = 'pg_statecharts') <> '0.0.0' then
+    raise exception 'the failed upgrade should have rolled back';
+  end if;
+  raise notice 'upgrade correctly refused and rolled back';
+end
+$check$;
+SQL
+
+echo "--- checking the upgrade names prerelease versions instead of failing on a cast ---"
+cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control.keep"
+cat > "$EXT_DIR/pg_statecharts.control" <<'CONTROL'
+default_version = '0.0.0'
+relocatable = false
+superuser = true
+requires = 'ltree, semver'
+CONTROL
+
+$PSQL -c "drop database if exists upgrade_check3"
+$PSQL -c "create database upgrade_check3"
+$PSQL -d upgrade_check3 <<'SQL'
+create extension pg_statecharts version '0.0.0' cascade;
+insert into fsm.statechart (name, version) values
+  ('flow', to_semver('1.0.0')), ('flow', to_semver('1.1.0-rc1')), ('other', to_semver('2.0.0+build5'));
+SQL
+
+cp "$EXT_DIR/pg_statecharts.control.keep" "$EXT_DIR/pg_statecharts.control"
+rm -f "$EXT_DIR/pg_statecharts.control.keep"
+
+output=$($PSQL -d upgrade_check3 -c "alter extension pg_statecharts update" 2>&1 || true)
+echo "$output"
+if ! grep -q 'prerelease or build suffix' <<<"$output"; then
+  echo "ERROR: expected the upgrade to refuse because of the prerelease versions" >&2
+  exit 1
+fi
+if ! grep -q 'flow 1.1.0-rc1' <<<"$output" || ! grep -q 'other 2.0.0+build5' <<<"$output"; then
+  echo "ERROR: the refusal should list every offending name and version" >&2
+  exit 1
+fi
+if grep -q 'invalid input syntax' <<<"$output"; then
+  echo "ERROR: the raw cast error leaked through" >&2
+  exit 1
+fi
+
+$PSQL -d upgrade_check3 <<'SQL'
+do $check$
+begin
+  if (select extversion from pg_extension where extname = 'pg_statecharts') <> '0.0.0' then
+    raise exception 'the refused upgrade should have rolled back';
+  end if;
+  raise notice 'prerelease versions refused with a list and rolled back';
+end
+$check$;
+SQL
+
+# following the hint has to make the upgrade go through
+$PSQL -d upgrade_check3 -c "update fsm.statechart set version = to_semver('1.1.0') where version = to_semver('1.1.0-rc1')"
+$PSQL -d upgrade_check3 -c "update fsm.statechart set version = to_semver('2.0.0') where name = 'other'"
+$PSQL -d upgrade_check3 -c "alter extension pg_statecharts update"
+if [ "$($PSQL -tA -d upgrade_check3 -c "select string_agg(fsm.semver_text(version), ' ' order by name, version) from fsm.statechart")" != "1.0.0 1.1.0 2.0.0" ]; then
+  echo "ERROR: renamed versions did not convert as expected" >&2
+  exit 1
+fi
+echo "after renaming the versions the upgrade succeeds"
+
+echo "all upgrade checks passed"

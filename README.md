@@ -62,14 +62,61 @@ Events drive transitions; the machine is always in exactly one active state (or 
 |---|---|
 | PostgreSQL ≥ 13 | Tested on 13+ |
 | [`ltree`](https://www.postgresql.org/docs/current/ltree.html) extension | Ships with PostgreSQL |
-| [`semver`](https://pgxn.org/dist/semver/) extension | Available on PGXN / most managed providers |
+| [`semver`](https://pgxn.org/dist/semver/) extension | Only for the sqitch path; the extension needs no compiler and no `semver` |
 | [sqitch](https://sqitch.org) | Change-management tool used to deploy migrations |
 
 ---
 
 ## Installation
 
-Clone the repository and run sqitch against your database:
+There are two ways to install, and they are alternatives — pick one. A
+database already deployed with sqitch can be moved over to the extension; see
+[Migrating to 0.1.0](pg_statecharts/README.md#migrating-to-010).
+
+### As an extension (recommended)
+
+`pg_statecharts` packages the same schema as a PostgreSQL extension. It is pure
+SQL, so there is nothing to compile: the same files work on every PostgreSQL
+version, architecture and operating system, and `ltree` is the only dependency.
+
+```bash
+cd pg_statecharts
+./install.sh          # copies two files into PostgreSQL's extension directory
+```
+
+```sql
+create extension pg_statecharts cascade;
+```
+
+There is a second, optional extension for development machines,
+[`pg_statecharts_dev`](pg_statecharts_dev), which turns `.scxml` files into
+statecharts or into sqitch migrations. It reads and writes files on the
+database host, so it is kept separate and is not something to install in
+production.
+
+Each [release](https://github.com/kronor-io/statecharts/releases) ships the
+same files prepackaged:
+
+| Artifact | Contents |
+|---|---|
+| `pg_statecharts-<version>.tar.gz` | Both extensions. `./install.sh` installs the runtime; `./install.sh --dev` installs both. |
+| `pg-statecharts-<PG>_<version>.deb` | The runtime extension for PostgreSQL major `<PG>`. This is the one for production. |
+| `pg-statecharts-dev-<PG>_<version>.deb` | The dev tooling. Depends on the runtime package of the same version. |
+
+```bash
+sudo dpkg -i pg-statecharts-18_0.1.0.deb                             # production
+sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # development
+```
+
+See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including
+how to upgrade from the older Rust build and what that means for your
+[backups](pg_statecharts/README.md#backups), and [example/](example) for a
+complete working project.
+
+### With sqitch
+
+The original deployment path: clone the repository and run sqitch against your
+database.
 
 ```bash
 git clone https://github.com/kronor-io/statecharts
@@ -85,6 +132,12 @@ To roll back:
 sqitch revert -t postgresql://user:password@host/db_name
 ```
 
+Note that this path uses the [`semver`](https://pgxn.org/dist/semver/) PGXN
+extension for the version column, whereas the extension defines an `fsm.semver`
+domain over `integer[]` in plain SQL and needs no such dependency. Versions
+therefore render as `{1,10,0}` rather than `1.10.0` under the extension; use
+`fsm.semver_text(version)` to format one.
+
 ---
 
 ## Database Schema Overview
@@ -94,7 +147,7 @@ erDiagram
     statechart {
         bigint id PK
         text name
-        semver version
+        integer[] version
         timestamptz created_at
     }
     state {
@@ -163,8 +216,10 @@ Insert a statechart, its states, and its transitions. The example below is the s
 
 ```sql
 -- 1. Register the statechart
+-- fsm.to_semver pads '1.0' out to 1.0.0. Under the sqitch path, where the
+-- version column is the semver extension's type, write '1.0'::semver instead.
 INSERT INTO fsm.statechart (id, name, version)
-VALUES (1, 'search_viewer', '1.0'::semver);
+VALUES (1, 'search_viewer', fsm.to_semver('1.0'));
 
 -- 2. Define the states
 INSERT INTO fsm.state
@@ -191,26 +246,32 @@ VALUES
 
 ### 2 — Create and start a machine
 
+Arguments are named throughout the examples below. Positional calls work just
+as well, but `shard => 1` reads better than a bare `1`. Note that the parameter
+names are not yet consistent between functions — the shard is `shard` here,
+`shard_id` on one function and `shid` on another — so copy them from the
+[Function Reference](#function-reference) rather than guessing.
+
 A *statechart* is a definition; a *state machine* is a running instance of that definition. You need both:
 
 ```sql
 -- Create the instance (does not enter any state yet)
 SELECT id AS machine_id
 FROM fsm.create_machine(
-    /* shard_id  => */ 1,   -- logical partition key; use your application's tenant/shard id
-    /* statechart_id => */ 1
+    shard      => 1,   -- logical partition key; use your application's tenant/shard id
+    statechart => 1
 ) \gset
 
 -- Start it: enters the initial state and fires on_entry callbacks
-SELECT fsm.start_machine(1, :machine_id);
+SELECT fsm.start_machine(shard => 1, machine_id => :machine_id);
 ```
 
 Or use the convenience function that does both in one call with the latest chart version:
 
 ```sql
 SELECT fsm.start_machine_with_latest_statechart(
-    /* shard_id => */ 1,
-    /* name     => */ 'search_viewer'
+    shard_id => 1,
+    named    => 'search_viewer'
 );
 ```
 
@@ -222,17 +283,17 @@ SELECT fsm.start_machine_with_latest_statechart(
 
 ```sql
 SELECT fsm.notify_state_machine(
-    /* shard_id    => */ 1,
-    /* machine_id  => */ :machine_id,
-    /* event       => */ 'search',
-    /* data (jsonb) => */ '{"query": "cats"}'
+    shard   => 1,
+    machine => :machine_id,
+    event   => 'search',
+    data    => '{"query": "cats"}'   -- jsonb, defaults to '{}'
 );
 ```
 
 **Process all pending events:**
 
 ```sql
-SELECT fsm.handle_machine_events(1, :machine_id);
+SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
 ```
 
 `handle_machine_events` picks up every unhandled event in insertion order, looks up the matching transition for each currently active state, exits the source state tree (firing `on_exit` callbacks), enters the target state tree (firing `on_entry` callbacks), and records the new active states — all in a single PL/pgSQL loop.
@@ -240,11 +301,11 @@ SELECT fsm.handle_machine_events(1, :machine_id);
 Multiple events can be queued before calling `handle_machine_events`; they will be processed sequentially:
 
 ```sql
-SELECT fsm.notify_state_machine(1, :machine_id, 'search',  '{"query": "cats"}');
-SELECT fsm.notify_state_machine(1, :machine_id, 'results', '{"count": 42}');
-SELECT fsm.notify_state_machine(1, :machine_id, 'zoom',    '{}');
+SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'search',  data => '{"query": "cats"}');
+SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'results', data => '{"count": 42}');
+SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'zoom');
 
-SELECT fsm.handle_machine_events(1, :machine_id);
+SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
 -- Machine is now in state 'zoomed_in'
 ```
 
@@ -265,13 +326,14 @@ WHERE shard_id        = 1
 **Check whether a specific state is active:**
 
 ```sql
-SELECT fsm.is_state_active(1, :machine_id, 'zoomed_in');
+-- note the abbreviated parameter names on this one
+SELECT fsm.is_state_active(shid => 1, smid => :machine_id, state => 'zoomed_in');
 ```
 
 **Check whether an event would trigger a transition:**
 
 ```sql
-SELECT fsm.is_valid_transition(1, :machine_id, 'zoom_out');
+SELECT fsm.is_valid_transition(shard => 1, machine_id => :machine_id, event_ => 'zoom_out');
 ```
 
 ---
@@ -417,18 +479,25 @@ This means you never need to manually fire completion events — just define the
 
 ## Function Reference
 
+Parameter names are exactly as declared, so they can be used as named
+arguments. They are **not consistent between functions** — the shard is
+variously `shard`, `shard_id`, `shard_id_` and `shid`, and the machine is
+`machine`, `machine_id` or `smid`. Copy from here rather than guessing.
+
 | Function | Description |
 |---|---|
-| `fsm.create_machine(shard, statechart_id)` | Creates a machine instance without starting it. Returns the new `fsm.state_machine` row. |
+| `fsm.create_machine(shard, statechart)` | Creates a machine instance without starting it. Returns the new `fsm.state_machine` row. |
 | `fsm.start_machine(shard, machine_id [, initial_data])` | Enters the initial state(s) and fires their `on_entry` callbacks. |
-| `fsm.create_state_machine_with_latest_statechart(shard, name)` | Creates a machine using the highest-versioned statechart with the given name. |
-| `fsm.start_machine_with_latest_statechart(shard, name [, initial_data])` | Creates **and** starts a machine with the latest chart version. |
-| `fsm.get_latest_statechart(name)` | Returns the `fsm.statechart` row with the highest version for that name. |
-| `fsm.notify_state_machine(shard, machine_id, event [, data])` | Queues an event for the machine. `data` defaults to `'{}'`. |
+| `fsm.create_state_machine_with_latest_statechart(shard_id_, named)` | Creates a machine using the highest-versioned statechart with the given name. |
+| `fsm.start_machine_with_latest_statechart(shard_id, named [, initial_data])` | Creates **and** starts a machine with the latest chart version. |
+| `fsm.get_latest_statechart(named)` | Returns the `fsm.statechart` row with the highest version for that name. |
+| `fsm.notify_state_machine(shard, machine, event [, data])` | Queues an event for the machine. `data` defaults to `'{}'`. |
 | `fsm.handle_machine_events(shard, machine_id)` | Processes all pending events in order, executes transitions and callbacks. |
-| `fsm.is_state_active(shard, machine_id, state_id)` | Returns `true` if the machine is currently in the given state. |
-| `fsm.is_valid_transition(shard, machine_id, event)` | Returns `true` if the event would trigger a transition from the current state. |
-| `fsm.get_initial_state(statechart_id)` | Returns the top-level initial state(s) of a statechart. |
+| `fsm.is_state_active(shid, smid, state)` | Returns `true` if the machine is currently in the given state. |
+| `fsm.is_valid_transition(shard, machine_id, event_)` | Returns `true` if the event would trigger a transition from the current state. |
+| `fsm.get_initial_state(statechart)` | Returns the top-level initial state(s) of a statechart. |
+| `fsm.to_semver(version)` | Parses a version string into `fsm.semver`, padding `1` and `1.2` out to `1.0.0` and `1.2.0`. |
+| `fsm.semver_text(version)` | Renders an `fsm.semver` as `1.10.0`. Casting to text instead gives the array form, `{1,10,0}`. |
 
 All functions live in the `fsm` schema.
 
@@ -437,6 +506,14 @@ All functions live in the `fsm` schema.
 ## Haskell SDK — SCXML to SQL Code Generator
 
 The `sdk/` directory contains a Haskell library and CLI tool that converts [SCXML](https://www.w3.org/TR/scxml/) files into sqitch-compatible SQL migration files, so you can design state machines visually and commit them to version control as code.
+
+The SDK targets the sqitch installation path only. The migrations it writes
+cast versions to the `semver` extension's type, which the extension path does
+not have, so they fail against a database running the extension. Projects on
+the extension generate migrations with
+[`pg_statecharts_dev`](pg_statecharts_dev) instead, and projects moving from
+sqitch to the extension rewrite the casts in their existing migrations once;
+see [Migrating to 0.1.0](pg_statecharts/README.md#migrating-to-010).
 
 ### Build
 

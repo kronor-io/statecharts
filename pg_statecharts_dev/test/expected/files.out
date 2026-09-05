@@ -1,0 +1,395 @@
+-- Reading and writing files on the database host.
+--
+-- Everything is written under /tmp because that is the one directory the tests
+-- can rely on already existing: SQL has no way to create one.
+-- Error CONTEXT carries plpgsql line numbers, which would make this
+-- expected output break on every unrelated edit.
+\set SHOW_CONTEXT never
+-- Quiet, so that the expected output is the same whether or not an earlier
+-- test in the same database already created the extension.
+set client_min_messages to warning;
+create extension if not exists pg_statecharts_dev cascade;
+reset client_min_messages;
+\set dir '/tmp/pg_statecharts_test'
+\set chart_a '/tmp/pg_statecharts_test_a-1.0.scxml'
+\set chart_b '/tmp/pg_statecharts_test_b-1.0.scxml'
+--
+-- Writing files
+--
+-- Content has to survive the COPY based writer untouched, including
+-- backslashes, dollar quotes, tabs, empty lines and a trailing newline.
+select fsm.__write_file(:'dir' || '_roundtrip.txt', E'line one\n\nbackslash \\ and \\n literal\n$$ do $tag$ x $tag$ $$\ttab\nlast\n');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select pg_read_file(:'dir' || '_roundtrip.txt') = E'line one\n\nbackslash \\ and \\n literal\n$$ do $tag$ x $tag$ $$\ttab\nlast\n' as roundtrip_exact;
+ roundtrip_exact 
+-----------------
+ t
+(1 row)
+
+-- COPY terminates every row, so content that does not end in a newline gets
+-- one. Documented rather than fixed: everything this extension writes ends in
+-- a newline already.
+select fsm.__write_file(:'dir' || '_nonewline.txt', 'abc');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select pg_read_file(:'dir' || '_nonewline.txt') = E'abc\n' as trailing_newline_added;
+ trailing_newline_added 
+------------------------
+ t
+(1 row)
+
+-- writing again replaces rather than appends
+select fsm.__write_file(:'dir' || '_nonewline.txt', 'xyz');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select pg_read_file(:'dir' || '_nonewline.txt') as replaced;
+ replaced 
+----------
+ xyz     +
+ 
+(1 row)
+
+-- a missing output directory is reported with the directory that is missing
+select fsm.__write_file('/tmp/pg_statecharts_no_such_dir/out.sql', 'x');
+ERROR:  output directory does not exist: /tmp/pg_statecharts_no_such_dir
+HINT:  create it first, for example: mkdir -p /tmp/pg_statecharts_no_such_dir
+-- carriage returns cannot survive the writer, so they are rejected up front
+select fsm.__write_file(:'dir' || '_cr.txt', E'a\r\nb');
+ERROR:  refusing to write /tmp/pg_statecharts_test_cr.txt because its content contains a carriage return or a control character
+DETAIL:  those characters cannot survive the COPY based writer intact
+-- so is a line that is exactly a backslash and a dot, which COPY would quote
+select fsm.__write_file(:'dir' || '_eod.txt', E'a\n\\.\nb\n');
+ERROR:  refusing to write /tmp/pg_statecharts_test_eod.txt because a line consists of just a backslash and a dot
+DETAIL:  COPY would quote that line and the file would no longer be written byte for byte
+-- a backslash-dot with anything else on the line is fine
+select fsm.__write_file(:'dir' || '_eod.txt', E'a\n\\.x\nb\n');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select pg_read_file(:'dir' || '_eod.txt') = E'a\n\\.x\nb\n' as near_miss_written_exactly;
+ near_miss_written_exactly 
+---------------------------
+ t
+(1 row)
+
+--
+-- Finding files
+--
+select fsm.__write_file(:'chart_a',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="chart_a" version="1.0" initial="s">'
+  '<state id="s" name="S"><onentry><script src="cb_one"/></onentry></state></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.__write_file(:'chart_b',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="chart_b" version="2.1" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+-- a single file is accepted directly
+select fsm.__find_scxml_files(:'chart_a', false);
+          __find_scxml_files          
+--------------------------------------
+ /tmp/pg_statecharts_test_a-1.0.scxml
+(1 row)
+
+-- hidden files are skipped in a directory listing whether or not it is
+-- recursive; a directory holding only a hidden chart therefore yields nothing
+select fsm.__write_file('/tmp/.pg_statecharts_hidden-1.0.scxml',
+  '<scxml name="hidden" version="1.0" initial="s"><state id="s"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select count(*) as visible_charts_in_tmp_hidden_check
+from fsm.__find_scxml_files('/tmp', false) as f
+where f like '%/.pg_statecharts_hidden-1.0.scxml';
+ visible_charts_in_tmp_hidden_check 
+------------------------------------
+                                  0
+(1 row)
+
+select count(*) as visible_charts_in_tmp_hidden_check_recursive
+from fsm.__find_scxml_files('/tmp', true) as f
+where f like '%/.pg_statecharts_hidden-1.0.scxml';
+ visible_charts_in_tmp_hidden_check_recursive 
+----------------------------------------------
+                                            0
+(1 row)
+
+-- a path that is not an .scxml file is rejected
+select fsm.__write_file('/tmp/pg_statecharts_test_notachart.txt', 'hello');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.__find_scxml_files('/tmp/pg_statecharts_test_notachart.txt', false);
+ERROR:  not an .scxml file: /tmp/pg_statecharts_test_notachart.txt
+-- a path that does not exist at all
+select fsm.__find_scxml_files('/tmp/pg_statecharts_definitely_missing', false);
+ERROR:  path does not exist: /tmp/pg_statecharts_definitely_missing
+HINT:  the path is resolved on the database host, so when Postgres runs in a container it has to be the path inside the container
+--
+-- Importing
+--
+create function cb_one(event_payload fsm_event_payload) returns void language sql as $$ select $$;
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_a');
+  name   | version 
+---------+---------
+ chart_a | 1.0.0
+(1 row)
+
+-- versions are padded on the way in
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_b');
+  name   | version 
+---------+---------
+ chart_b | 2.1.0
+(1 row)
+
+-- importing the same chart twice is an error by default
+select name from fsm.import_scxml_files(:'chart_a');
+ERROR:  chart_a version 1.0 has already been imported
+DETAIL:  while importing /tmp/pg_statecharts_test_a-1.0.scxml
+HINT:  pass on_conflict_do_nothing => true to skip charts that are already in the database, or bump the version attribute in the .scxml file
+-- unless asked to skip
+select count(*) as imported from fsm.import_scxml_files(:'chart_a', on_conflict_do_nothing => true);
+ imported 
+----------
+        0
+(1 row)
+
+-- a callback that does not exist is caught at import time, naming the file
+delete from fsm.statechart;
+select fsm.__write_file(:'dir' || '_missing_cb-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="missing_cb" version="1.0" initial="s">'
+  '<state id="s" name="S"><onentry><script src="no_such_callback"/></onentry></state></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select name from fsm.import_scxml_files(:'dir' || '_missing_cb-1.0.scxml');
+ERROR:  missing_cb version 1.0.0 references functions that do not exist: public.no_such_callback
+DETAIL:  while importing /tmp/pg_statecharts_test_missing_cb-1.0.scxml
+HINT:  every on_entry and on_exit callback has to already exist and take exactly one fsm_event_payload argument
+-- nothing was left behind by the failed import
+select count(*) as charts from fsm.statechart;
+ charts 
+--------
+      0
+(1 row)
+
+-- a malformed document names the file it came from
+select fsm.__write_file(:'dir' || '_broken-1.0.scxml', 'this is not xml at all');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select name from fsm.import_scxml_files(:'dir' || '_broken-1.0.scxml');
+ERROR:  RAISE statement option cannot be null
+-- so does a document whose root is not <scxml>
+select fsm.__write_file(:'dir' || '_wrongroot-1.0.scxml', '<html><body/></html>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select name from fsm.import_scxml_files(:'dir' || '_wrongroot-1.0.scxml');
+ERROR:  RAISE statement option cannot be null
+--
+-- Generating migrations
+--
+-- the sqitch plan file has to exist
+select fsm.gen_statechart_sqitch_migrations(:'chart_a', '/tmp/pg_statecharts_no_plan.plan');
+ERROR:  sqitch plan file does not exist: /tmp/pg_statecharts_no_plan.plan
+HINT:  the path is resolved on the database host, so when Postgres runs in a container it has to be the path inside the container
+-- and it has to look like a plan
+select fsm.__write_file('/tmp/pg_statecharts_test.plan', E'not a plan\n');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'chart_a', '/tmp/pg_statecharts_test.plan');
+ERROR:  could not find a %project= line in /tmp/pg_statecharts_test.plan
+HINT:  is this really a sqitch plan file?
+-- with a real plan, all three missing output directories are reported at once
+-- and nothing is written
+select fsm.__write_file('/tmp/pg_statecharts_test.plan', E'%syntax-version=1.0.0\n%project=testproj\n\n');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'chart_a', '/tmp/pg_statecharts_test.plan');
+ERROR:  the sqitch project is missing output directories
+DETAIL:  /tmp/deploy/statechart
+/tmp/revert/statechart
+/tmp/verify/statechart
+HINT:  create them first: mkdir -p /tmp/deploy/statechart /tmp/revert/statechart /tmp/verify/statechart
+-- the plan was not touched by the failed run
+select pg_read_file('/tmp/pg_statecharts_test.plan');
+     pg_read_file      
+-----------------------
+ %syntax-version=1.0.0+
+ %project=testproj    +
+                      +
+ 
+(1 row)
+
+-- Dots in a chart name become directory separators, so the directories that
+-- need creating are deeper than <sqitch_dir>/{deploy,revert,verify}/statechart.
+select fsm.__migration_name('myschema.thingflow', '1.0.0') as dotted,
+       fsm.__migration_name('a.b.c', '2.1.0') as deeply_dotted;
+               dotted                |     deeply_dotted      
+-------------------------------------+------------------------
+ statechart/myschema/thingflow-1.0.0 | statechart/a/b/c-2.1.0
+(1 row)
+
+-- The hint has to name the real missing directories rather than assume one
+-- level, because following it is supposed to fix the error.
+select fsm.__write_file(:'dir' || '_dotted-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="myschema.thingflow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_dotted-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  the sqitch project is missing output directories
+DETAIL:  /tmp/deploy/statechart/myschema
+/tmp/revert/statechart/myschema
+/tmp/verify/statechart/myschema
+HINT:  create them first: mkdir -p /tmp/deploy/statechart/myschema /tmp/revert/statechart/myschema /tmp/verify/statechart/myschema
+-- Chart names are only length checked, so a path can contain characters that
+-- would not survive being pasted into a shell. Those get quoted.
+select fsm.__write_file(:'dir' || '_spaced-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="two words.flow" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_spaced-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  the sqitch project is missing output directories
+DETAIL:  /tmp/deploy/statechart/two words
+/tmp/revert/statechart/two words
+/tmp/verify/statechart/two words
+HINT:  create them first: mkdir -p '/tmp/deploy/statechart/two words' '/tmp/revert/statechart/two words' '/tmp/verify/statechart/two words'
+-- The generator runs every chart through the real tables in a rolled back
+-- subtransaction, so anything the runtime's triggers or constraints would
+-- refuse at deploy time is refused now, with the same message plus the file.
+-- Parsing alone cannot see these.
+--
+-- The trigger messages quote the statechart id, so pin the sequence to keep
+-- this output stable regardless of what ran before.
+alter sequence fsm.statechart_id_seq restart with 1000;
+-- a transition between states with different parents
+select fsm.__write_file(:'dir' || '_crossing-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="crossing" version="1.0" initial="p">'
+  '<state id="p"><initial><transition target="p1"/></initial>'
+  '<state id="p1"><transition event="jump" target="q1"/></state></state>'
+  '<state id="q"><initial><transition target="q1"/></initial><state id="q1"/></state>'
+  '</scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_crossing-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- a transition to a state that does not exist
+select fsm.__write_file(:'dir' || '_dangling-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="dangling" version="1.0" initial="a">'
+  '<state id="a"><transition event="go" target="nowhere"/></state></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_dangling-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- two transitions on the same event out of one state
+select fsm.__write_file(:'dir' || '_twice-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="twice" version="1.0" initial="a">'
+  '<state id="a"><transition event="go" target="b"/><transition event="go" target="c"/></state>'
+  '<state id="b"/><state id="c"/></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select fsm.gen_statechart_sqitch_migrations(:'dir' || '_twice-1.0.scxml', '/tmp/pg_statecharts_test.plan');
+ERROR:  RAISE statement option cannot be null
+-- and the dry run leaves nothing behind, even when the same chart is already
+-- in the database under its real name
+select name, fsm.semver_text(version) as version from fsm.import_scxml_files(:'chart_b');
+  name   | version 
+---------+---------
+ chart_b | 2.1.0
+(1 row)
+
+select fsm.__check_chart_deploys(fsm.__read_scxml(:'chart_b'), '2.1');
+ __check_chart_deploys 
+-----------------------
+ 
+(1 row)
+
+select count(*) as charts, count(*) filter (where name like '__pg_statecharts_dry_run%') as dry_run_leftovers
+from fsm.statechart;
+ charts | dry_run_leftovers 
+--------+-------------------
+      1 |                 0
+(1 row)
+
+-- A chart with no transitions still produces a migration that runs, rather
+-- than a NULL body that silently writes nothing.
+select fsm.__migration_deploy(
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="lonely" version="1.0" initial="s">'
+  '<state id="s" name="S"/></scxml>'::xml, 'proj', 'lonely', '1.0');
+                                             __migration_deploy                                              
+-------------------------------------------------------------------------------------------------------------
+ -- Deploy proj:statechart/lonely-1.0 to pg                                                                 +
+                                                                                                            +
+ -- FILE AUTOMATICALLY GENERATED. MANUAL CHANGES MIGHT BE OVERWRITTEN                                       +
+                                                                                                            +
+ BEGIN;                                                                                                     +
+ do $$                                                                                                      +
+ declare                                                                                                    +
+ chart bigint;                                                                                              +
+ begin                                                                                                      +
+ insert into fsm.statechart (name, version) values ('lonely', fsm.to_semver('1.0')) returning id into chart;+
+ insert into fsm.state (statechart_id, id, name, parent_id, is_initial, is_final, on_entry, on_exit) values +
+ (chart, 's', 'S', null, true, false, array[]::fsm_callback_name[], array[]::fsm_callback_name[]);          +
+ end                                                                                                        +
+ $$;                                                                                                        +
+ COMMIT;                                                                                                    +
+ 
+(1 row)
+
+-- and a null body is refused loudly rather than silently skipped
+select fsm.__write_file('/tmp/pg_statecharts_test_null.txt', null);
+ERROR:  refusing to write /tmp/pg_statecharts_test_null.txt because the content is null
+drop function cb_one(fsm_event_payload);
