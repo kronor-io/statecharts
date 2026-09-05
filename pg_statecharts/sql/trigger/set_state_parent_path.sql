@@ -1,36 +1,36 @@
--- Written without ltree operators or casts on purpose. This trigger fires while
--- pg_restore loads fsm.state, and pg_restore runs with an empty search_path,
--- where a bare "ltree" or "||" cannot be resolved. The paths are built as text
--- and assigned to the ltree columns, which PL/pgSQL converts through the type's
--- input function. ltree labels never contain a dot, so joining with '.' is
--- exactly what the || operator does.
+-- The ltree type and its || operator are written with an explicit schema. This
+-- trigger fires while pg_restore loads fsm.state, and pg_restore runs with an
+-- empty search_path, where a bare "ltree" or "||" cannot be resolved and the
+-- restore of the fsm data fails. Everything pg_statecharts owns lives in fsm
+-- and is already qualified; ltree is installed into public. (ltree is
+-- relocatable, so a database that keeps it in another schema has to change
+-- these references, but the rest of the extension assumes it is on the
+-- search_path anyway, which in practice means public.)
 create or replace function fsm.trig_set_state_parent_path() returns trigger as
 $$
     declare
-        parent_path_ text;
+        path public.ltree;
     begin
 
         if NEW.parent_id is null then
-            parent_path_ := coalesce(NEW.statechart_id, OLD.statechart_id)::text;
+            NEW.parent_path = coalesce(NEW.statechart_id, OLD.statechart_id)::text::public.ltree;
 
         elseif TG_OP = 'INSERT' or OLD.parent_id is null or OLD.parent_id != NEW.parent_id then
-            select parent_path::text || '.' || id
+            select parent_path operator(public.||) id
             from fsm.state
             where id = NEW.parent_id and statechart_id = NEW.statechart_id and not is_final
-            into parent_path_;
+            into path;
 
-            if parent_path_ is null then
+            if path is null then
                 raise exception 'Invalid parent_id. It should exist and not be final: %', NEW.parent_id;
             end if;
 
-        else
-            parent_path_ := NEW.parent_path::text;
+            new.parent_path = path;
         end if;
 
-        NEW.parent_path := parent_path_;
-        NEW.node_path := parent_path_ || '.' || NEW.id;
+        new.node_path = new.parent_path operator(public.||) new.id;
 
-        return NEW;
+        return new;
     end;
 $$ language plpgsql;
 

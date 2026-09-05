@@ -10,8 +10,8 @@
 # fresh one and compares the two.
 #
 # The restore is also where pg_restore's empty search_path bites. The triggers
-# on fsm.state and fsm.transition fire while the data loads, so they must not
-# depend on ltree being on the search_path.
+# on fsm.state and fsm.transition fire while the data loads, so their ltree
+# references have to carry a schema rather than rely on the search_path.
 set -eu
 
 PSQL="psql -v ON_ERROR_STOP=1 -X -q"

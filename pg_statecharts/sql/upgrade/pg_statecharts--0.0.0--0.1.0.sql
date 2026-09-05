@@ -251,34 +251,32 @@ $$ language sql
 -- fsm.transition. pg_restore runs with an empty search_path, where a bare
 -- ltree type or the ltree operators cannot be resolved, so the 0.0.0 bodies
 -- made every restore of the fsm data fail. These bodies are the same as in a
--- fresh install: written without ltree operators or casts.
+-- fresh install: the ltree references carry their schema, public.
 create or replace function fsm.trig_set_state_parent_path() returns trigger as
 $$
     declare
-        parent_path_ text;
+        path public.ltree;
     begin
 
         if NEW.parent_id is null then
-            parent_path_ := coalesce(NEW.statechart_id, OLD.statechart_id)::text;
+            NEW.parent_path = coalesce(NEW.statechart_id, OLD.statechart_id)::text::public.ltree;
 
         elseif TG_OP = 'INSERT' or OLD.parent_id is null or OLD.parent_id != NEW.parent_id then
-            select parent_path::text || '.' || id
+            select parent_path operator(public.||) id
             from fsm.state
             where id = NEW.parent_id and statechart_id = NEW.statechart_id and not is_final
-            into parent_path_;
+            into path;
 
-            if parent_path_ is null then
+            if path is null then
                 raise exception 'Invalid parent_id. It should exist and not be final: %', NEW.parent_id;
             end if;
 
-        else
-            parent_path_ := NEW.parent_path::text;
+            new.parent_path = path;
         end if;
 
-        NEW.parent_path := parent_path_;
-        NEW.node_path := parent_path_ || '.' || NEW.id;
+        new.node_path = new.parent_path operator(public.||) new.id;
 
-        return NEW;
+        return new;
     end;
 $$ language plpgsql;
 
@@ -304,16 +302,13 @@ $$
     -- it is the count of this children nodes that will determine
     -- if the same event is used in another transition
     --
-    -- The paths are compared as text rather than with the ltree operators <@
-    -- and @>. This trigger fires while pg_restore loads fsm.transition, and
-    -- pg_restore runs with an empty search_path, where those operators cannot
-    -- be resolved. ltree labels never contain a dot, so a prefix match on the
-    -- dotted text is exact: a descendant's path starts with its ancestor's
-    -- path followed by a dot.
+    -- The ltree operators carry an explicit schema. This trigger fires while
+    -- pg_restore loads fsm.transition, and pg_restore runs with an empty
+    -- search_path, where a bare <@ or @> cannot be resolved and the restore
+    -- fails. ltree is installed into public; see set_state_parent_path.sql.
     join fsm.state relative
       on  relative.statechart_id = t.statechart_id
-      and (starts_with(relative.node_path::text, s.node_path::text || '.')
-        or starts_with(s.node_path::text, relative.node_path::text || '.'))
+      and (relative.node_path operator(public.<@) s.node_path or relative.node_path operator(public.@>) s.node_path)
       and relative.id <> s.id
     join fsm.transition ct
       on  ct.statechart_id = relative.statechart_id

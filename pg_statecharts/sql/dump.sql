@@ -10,8 +10,8 @@
 -- The sequences are listed too, so that a restored database carries on
 -- numbering where the dumped one left off. pg_dump orders the data by the
 -- foreign keys between these tables, and the triggers on fsm.state and
--- fsm.transition are written to work under the empty search_path that
--- pg_restore loads data with.
+-- fsm.transition qualify their ltree references so that they work under the
+-- empty search_path that pg_restore loads data with.
 select pg_catalog.pg_extension_config_dump('fsm.statechart', '');
 select pg_catalog.pg_extension_config_dump('fsm.state', '');
 select pg_catalog.pg_extension_config_dump('fsm.transition', '');

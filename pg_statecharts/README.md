@@ -44,7 +44,11 @@ create extension pg_statecharts cascade;
 
 `cascade` is there to pull in `ltree`, the only dependency. It ships with
 PostgreSQL as part of the standard contrib modules, so there is nothing to
-fetch or build.
+fetch or build. `cascade` installs it into your current default schema, and
+the extension expects to find it in `public`: two of its triggers name
+`public.ltree` outright, because they run during `pg_restore`, which searches
+no schema at all (see [Backups](#backups)), and the rest rely on `public`
+being on the search_path.
 
 ## Versions
 
