@@ -97,6 +97,16 @@ jobs:
       - name: Install extension
         run: ./pg_statecharts/install.sh
 
+      # pg_dump leaves out an extension's tables unless it registers them, and
+      # 0.0.0 never did. Dump a database with a running machine, restore it and
+      # compare, which also drives the fsm triggers under pg_restore's empty
+      # search_path.
+      - name: Check pg_dump includes the fsm tables and the dump restores
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: .github/scripts/check_dump_restore.sh
+
       - name: Check the upgrade converts data and drops semver
         env:
           PGHOST: /tmp

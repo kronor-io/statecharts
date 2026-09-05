@@ -92,5 +92,19 @@ select fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_on') as tu
        fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_off') as turn_off_valid
 from lightswitch;
 
+-- pg_dump only includes an extension's tables when they are registered as
+-- configuration tables. Every table and sequence in fsm has to be, or a backup
+-- silently loses the machines while keeping the application rows that point at
+-- them. Expect no rows.
+select c.relkind, c.oid::regclass as not_registered_for_pg_dump
+from pg_class c
+where c.relnamespace = 'fsm'::regnamespace
+  and c.relkind in ('r', 'S')
+  and not exists (
+    select 1 from pg_extension e
+    where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
+  )
+order by 1, 2;
+
 drop table lightswitch cascade;
 delete from fsm.statechart;

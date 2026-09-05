@@ -26,3 +26,4 @@ sql/trigger/check_no_transition_for_final.sql
 sql/trigger/check_valid_initial_state.sql
 sql/trigger/notify_machine_event.sql
 sql/trigger/set_state_parent_path.sql
+sql/dump.sql

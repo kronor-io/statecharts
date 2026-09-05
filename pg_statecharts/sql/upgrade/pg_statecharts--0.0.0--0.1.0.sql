@@ -2,7 +2,7 @@
 --
 --     alter extension pg_statecharts update;
 --
--- Two things change:
+-- Three things change:
 --
 --   1. The `version` column moves off the `semver` extension's type and onto
 --      the fsm.semver domain, an integer array, so that nothing has to be
@@ -19,6 +19,12 @@
 --      files on the database server, and there is no reason for that to be
 --      installed in production. Install pg_statecharts_dev on the machines
 --      that need them.
+--
+--   3. The fsm tables and sequences are registered with pg_dump. 0.0.0 never
+--      did that, so a backup taken under it holds every application row with
+--      its state_machine_id and none of the machines those ids point at. Take
+--      a fresh backup once this upgrade has been applied; the old ones cannot
+--      be repaired.
 --
 -- Once the upgrade has been applied nothing references pg_statecharts.so any
 -- more, so it can be deleted from $(pg_config --pkglibdir).
@@ -240,3 +246,105 @@ $$ language sql
     stable
     parallel safe
     rows 1;
+
+-- The two trigger functions that fire while pg_restore loads fsm.state and
+-- fsm.transition. pg_restore runs with an empty search_path, where a bare
+-- ltree type or the ltree operators cannot be resolved, so the 0.0.0 bodies
+-- made every restore of the fsm data fail. These bodies are the same as in a
+-- fresh install: written without ltree operators or casts.
+create or replace function fsm.trig_set_state_parent_path() returns trigger as
+$$
+    declare
+        parent_path_ text;
+    begin
+
+        if NEW.parent_id is null then
+            parent_path_ := coalesce(NEW.statechart_id, OLD.statechart_id)::text;
+
+        elseif TG_OP = 'INSERT' or OLD.parent_id is null or OLD.parent_id != NEW.parent_id then
+            select parent_path::text || '.' || id
+            from fsm.state
+            where id = NEW.parent_id and statechart_id = NEW.statechart_id and not is_final
+            into parent_path_;
+
+            if parent_path_ is null then
+                raise exception 'Invalid parent_id. It should exist and not be final: %', NEW.parent_id;
+            end if;
+
+        else
+            parent_path_ := NEW.parent_path::text;
+        end if;
+
+        NEW.parent_path := parent_path_;
+        NEW.node_path := parent_path_ || '.' || NEW.id;
+
+        return NEW;
+    end;
+$$ language plpgsql;
+
+create or replace function fsm.trig_check_no_duplicate_event_handler() returns trigger as
+$$
+  declare
+      duplicate_transitions jsonb;
+  begin
+    with changed_event as (
+      select distinct statechart_id, event
+      from changed
+    )
+    -- look at the entire tree to see if the same event name is used
+    -- for a transition
+    select jsonb_agg(t.*) into duplicate_transitions
+    from fsm.transition t
+    -- need to get the source state info for the transition
+    -- specifically, we need to get its node_path
+    join fsm.state s
+      on  s.statechart_id = t.statechart_id
+      and s.id = t.source_state
+    -- get all children and parents on the source_state by using the node_path
+    -- it is the count of this children nodes that will determine
+    -- if the same event is used in another transition
+    --
+    -- The paths are compared as text rather than with the ltree operators <@
+    -- and @>. This trigger fires while pg_restore loads fsm.transition, and
+    -- pg_restore runs with an empty search_path, where those operators cannot
+    -- be resolved. ltree labels never contain a dot, so a prefix match on the
+    -- dotted text is exact: a descendant's path starts with its ancestor's
+    -- path followed by a dot.
+    join fsm.state relative
+      on  relative.statechart_id = t.statechart_id
+      and (starts_with(relative.node_path::text, s.node_path::text || '.')
+        or starts_with(s.node_path::text, relative.node_path::text || '.'))
+      and relative.id <> s.id
+    join fsm.transition ct
+      on  ct.statechart_id = relative.statechart_id
+      and ct.source_state = relative.id
+    join changed_event ce
+      on  ce.statechart_id = ct.statechart_id
+      and ce.event = ct.event
+      and ce.statechart_id = t.statechart_id
+      and ce.event = t.event;
+
+    if jsonb_array_length(duplicate_transitions) > 0
+    then
+      raise exception $m$
+      Cannot use the same event name for multiple transations in the same tree: %
+      $m$, jsonb_pretty(duplicate_transitions);
+    end if;
+
+    return null;
+  end;
+$$ language plpgsql;
+
+-- pg_dump leaves out an extension's tables unless the extension registers them
+-- as configuration tables. This is what makes the fsm data part of a backup
+-- from here on; the sequences are included so that a restored database keeps
+-- numbering where the dumped one stopped.
+select pg_catalog.pg_extension_config_dump('fsm.statechart', '');
+select pg_catalog.pg_extension_config_dump('fsm.state', '');
+select pg_catalog.pg_extension_config_dump('fsm.transition', '');
+select pg_catalog.pg_extension_config_dump('fsm.state_machine', '');
+select pg_catalog.pg_extension_config_dump('fsm.state_machine_state', '');
+select pg_catalog.pg_extension_config_dump('fsm.state_machine_event', '');
+select pg_catalog.pg_extension_config_dump('fsm.statechart_id_seq', '');
+select pg_catalog.pg_extension_config_dump('fsm.state_machine_id_seq', '');
+select pg_catalog.pg_extension_config_dump('fsm.state_machine_event_id_seq', '');

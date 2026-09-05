@@ -19,9 +19,17 @@ $$
     -- get all children and parents on the source_state by using the node_path
     -- it is the count of this children nodes that will determine
     -- if the same event is used in another transition
+    --
+    -- The paths are compared as text rather than with the ltree operators <@
+    -- and @>. This trigger fires while pg_restore loads fsm.transition, and
+    -- pg_restore runs with an empty search_path, where those operators cannot
+    -- be resolved. ltree labels never contain a dot, so a prefix match on the
+    -- dotted text is exact: a descendant's path starts with its ancestor's
+    -- path followed by a dot.
     join fsm.state relative
       on  relative.statechart_id = t.statechart_id
-      and (relative.node_path <@ s.node_path or relative.node_path @> s.node_path)
+      and (starts_with(relative.node_path::text, s.node_path::text || '.')
+        or starts_with(s.node_path::text, relative.node_path::text || '.'))
       and relative.id <> s.id
     join fsm.transition ct
       on  ct.statechart_id = relative.statechart_id

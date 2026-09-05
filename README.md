@@ -109,7 +109,8 @@ sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # deve
 ```
 
 See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including
-how to upgrade from the older Rust build, and [example/](example) for a
+how to upgrade from the older Rust build and what that means for your
+[backups](pg_statecharts/README.md#backups), and [example/](example) for a
 complete working project.
 
 ### With sqitch

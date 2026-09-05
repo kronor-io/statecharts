@@ -13,7 +13,7 @@ or commit.
 ## Setup
 
 ```bash
-make up                    # writes .env with your uid/gid, then starts postgres
+make up                    # writes .env with your uid/gid and sqitch identity, then starts postgres
 make deploy-migrations     # creates the extension and the lightswitch table
 ```
 
@@ -27,9 +27,8 @@ migration and deploy it:
 
 ```bash
 $ make gen-charts
-docker compose exec db psql -c "create extension if not exists pg_statecharts_dev cascade"
-CREATE EXTENSION
 docker compose exec db psql -c "$GEN_CHARTS_QUERY"
+CREATE EXTENSION
 INFO:  created new migration: statechart/lightswitch_flow-1.0.0
  gen_statechart_sqitch_migrations
 ----------------------------------
@@ -78,9 +77,10 @@ postgres=# select id, turned_on_at, turned_off_at from lightswitch;
 `sqitch/deploy/lightswitch.sql` creates only `pg_statecharts`, the runtime
 half. That is what a production database gets.
 
-`pg_statecharts_dev` is created by the `dev-extension` target in the Makefile,
-by hand, and never by a migration. It is the half that reads and writes files
-on the database host, and there is no reason for it to exist in production.
+`pg_statecharts_dev` is created by the `gen-charts` and `import-charts` queries
+themselves, with a `create extension if not exists` in front of the call, and
+never by a migration. It is the half that reads and writes files on the
+database host, and there is no reason for it to exist in production.
 
 ## Notes on the container
 
@@ -92,6 +92,10 @@ on the database host, and there is no reason for it to exist in production.
   be run as an arbitrary uid.
 - `PGUSER` and `SQITCH_FULLNAME`/`SQITCH_EMAIL` are set because an arbitrary
   uid has no `/etc/passwd` entry for psql and sqitch to look themselves up in.
+  Mounting `~/.sqitch` into the container, the old way of telling sqitch who
+  you are, does not work any more for the same reason: there is no home
+  directory for it to land in. `make setup` takes the name and email from
+  your git config and puts them in `.env`.
 - The image installs the extensions by copying files. No compiler, no PGXN
   client, no server headers.
 - `mkdir -p sqitch/{deploy,revert,verify}/statechart` is done by `make setup`,

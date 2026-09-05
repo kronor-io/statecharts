@@ -131,5 +131,22 @@ from lightswitch;
  t             | f
 (1 row)
 
+-- pg_dump only includes an extension's tables when they are registered as
+-- configuration tables. Every table and sequence in fsm has to be, or a backup
+-- silently loses the machines while keeping the application rows that point at
+-- them. Expect no rows.
+select c.relkind, c.oid::regclass as not_registered_for_pg_dump
+from pg_class c
+where c.relnamespace = 'fsm'::regnamespace
+  and c.relkind in ('r', 'S')
+  and not exists (
+    select 1 from pg_extension e
+    where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
+  )
+order by 1, 2;
+ relkind | not_registered_for_pg_dump 
+---------+----------------------------
+(0 rows)
+
 drop table lightswitch cascade;
 delete from fsm.statechart;

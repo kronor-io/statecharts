@@ -4,8 +4,15 @@ SQITCH_DIR := sqitch
 # The database container runs as you rather than as its own postgres user, so
 # that the migration files it generates end up owned by you rather than by
 # uid 999. That is what replaced the old chmod 666 dance.
+#
+# sqitch records who deployed each change. Running as an arbitrary uid it has
+# no home directory to find ~/.sqitch/sqitch.conf in, so the name and email
+# are handed to it through the environment instead; git already knows them.
 .env:
-	printf 'UID=%s\nGID=%s\n' "$$(id -u)" "$$(id -g)" > $@
+	printf 'UID=%s\nGID=%s\nSQITCH_FULLNAME=%s\nSQITCH_EMAIL=%s\n' \
+	  "$$(id -u)" "$$(id -g)" \
+	  "$$(git config user.name || echo $$USER)" \
+	  "$$(git config user.email || echo $$USER@localhost)" > $@
 
 # SQL cannot create directories, so the ones the generated migrations go into
 # have to exist up front. sqitch init does not make the statechart/ subfolders.
@@ -33,14 +40,15 @@ deploy-migrations:
 
 # pg_statecharts_dev is deliberately not created by any migration: it can read
 # and write files on the database host and has no business being in
-# production. It gets created here, by hand, on development machines only.
-.PHONY: dev-extension
-dev-extension:
-	docker compose exec db psql -c "create extension if not exists pg_statecharts_dev cascade"
+# production. The two queries below create it themselves instead, which is
+# free once it exists and means a freshly created development database needs
+# no separate step.
 
 # Generates a sqitch migration per .scxml file. The paths are resolved by the
 # database server, so they are paths inside the container.
 define GEN_CHARTS_QUERY
+	create extension if not exists pg_statecharts_dev cascade;
+
 	select fsm.gen_statechart_sqitch_migrations(
 		source_path => '/repo/statecharts',
 		sqitch_plan_file_path => '/repo/sqitch/sqitch.plan',
@@ -50,13 +58,15 @@ endef
 
 export GEN_CHARTS_QUERY
 .PHONY: gen-charts
-gen-charts: setup dev-extension
+gen-charts: setup
 	docker compose exec db psql -c "$$GEN_CHARTS_QUERY"
 
 # Loads the .scxml files straight into the database without going through
 # sqitch. Handy while iterating on a chart, but nothing records that it
 # happened, so use gen-charts for anything you want to keep.
 define IMPORT_CHARTS_QUERY
+	create extension if not exists pg_statecharts_dev cascade;
+
 	select * from fsm.import_scxml_files(
 		source_path => '/repo/statecharts',
 		recursive => false,
@@ -66,5 +76,5 @@ endef
 
 export IMPORT_CHARTS_QUERY
 .PHONY: import-charts
-import-charts: dev-extension
+import-charts:
 	docker compose exec db psql -c "$$IMPORT_CHARTS_QUERY"

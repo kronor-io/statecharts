@@ -65,7 +65,15 @@ services:
     image: postgres:18
     user: "${UID:-1000}:${GID:-1000}"
     environment:
-      PGUSER: postgres          # an arbitrary uid has no /etc/passwd entry
+      # an arbitrary uid has no /etc/passwd entry, so psql cannot guess the
+      # database user from the OS user...
+      PGUSER: postgres
+      # ...and sqitch cannot work out who is deploying. It used to read that
+      # from ~/.sqitch/sqitch.conf, but mounting yours at /root/.sqitch no
+      # longer helps: the container is not running as root, and there is no
+      # home directory to look in. Pass the two values instead.
+      SQITCH_FULLNAME: ${SQITCH_FULLNAME:-${USER}}
+      SQITCH_EMAIL: ${SQITCH_EMAIL:-${USER}@localhost}
     volumes:
       # mount at the parent, not at the data directory: the official image
       # ships /var/lib/postgresql mode 1777 so it can run as any uid
@@ -74,18 +82,23 @@ services:
 ```
 
 `docker compose` will not expand `$(id -u)` itself, so put the values in a
-`.env` file next to the compose file:
+`.env` file next to the compose file, along with the name and email you want
+sqitch to record:
 
 ```bash
-printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+printf 'UID=%s\nGID=%s\nSQITCH_FULLNAME=%s\nSQITCH_EMAIL=%s\n' \
+  "$(id -u)" "$(id -g)" "$(git config user.name)" "$(git config user.email)" > .env
 ```
 
 See [../example](../example) for a working setup. This replaces the old
-`file_permission_666` flag, which no longer exists.
+`file_permission_666` flag, which no longer exists, and the old habit of
+mounting `~/.sqitch` into the container.
 
 ## fsm.import_scxml_files
 
 ```sql
+create extension if not exists pg_statecharts_dev cascade;
+
 select * from fsm.import_scxml_files(
   source_path            => '/repo/statecharts',
   recursive              => false,
@@ -94,7 +107,11 @@ select * from fsm.import_scxml_files(
 ```
 
 Reads every `.scxml` file at `source_path` and inserts it into the statechart
-tables, returning the `fsm.statechart` rows it created. `source_path` may be a
+tables, returning the `fsm.statechart` rows it created. The `create extension`
+in front costs nothing once the extension exists, and putting it in the same
+query means the tooling is there on a freshly created development database
+without a separate step; since it is never part of a migration, that is also
+the only place it needs to be. `source_path` may be a
 single file or a directory.
 
 Everything happens in your transaction, so a file that fails to parse half way
@@ -108,6 +125,8 @@ happened, so use the migration generator for anything you want to keep.
 ## fsm.gen_statechart_sqitch_migrations
 
 ```sql
+create extension if not exists pg_statecharts_dev cascade;
+
 select fsm.gen_statechart_sqitch_migrations(
   source_path           => '/repo/statecharts',
   sqitch_plan_file_path => '/repo/sqitch/sqitch.plan',

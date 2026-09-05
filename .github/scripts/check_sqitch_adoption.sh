@@ -111,9 +111,26 @@ do $check$
 declare
   latest text;
   kept int;
+  not_dumped text;
 begin
   if (select extversion from pg_extension where extname = 'pg_statecharts') <> current_setting('check.version') then
     raise exception 'extension was not upgraded to %', current_setting('check.version');
+  end if;
+
+  -- The adopted tables and sequences have to end up registered with pg_dump
+  -- like a fresh install's, or the backups of a migrated database keep
+  -- missing the machines.
+  select string_agg(c.oid::regclass::text, ', ' order by c.oid::regclass::text)
+  into not_dumped
+  from pg_class c
+  where c.relnamespace = 'fsm'::regnamespace
+    and c.relkind in ('r', 'S')
+    and not exists (
+      select 1 from pg_extension e
+      where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
+    );
+  if not_dumped is not null then
+    raise exception 'not registered for pg_dump after adoption: %', not_dumped;
   end if;
 
   if exists (select 1 from pg_extension where extname = 'semver') then

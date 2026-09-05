@@ -9,6 +9,7 @@ set -eu
 
 EXT_DIR="$(pg_config --sharedir)/extension"
 PSQL="psql -v ON_ERROR_STOP=1 -X -q"
+VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" pg_statecharts/pg_statecharts.control)
 
 cleanup() {
   cp "$EXT_DIR/pg_statecharts.control.real" "$EXT_DIR/pg_statecharts.control" 2>/dev/null || true
@@ -73,14 +74,35 @@ echo "--- upgrading ---"
 $PSQL -d upgrade_check -c "alter extension pg_statecharts update"
 
 echo "--- verifying ---"
-$PSQL -d upgrade_check <<'SQL'
+$PSQL -d upgrade_check -v version="$VERSION" <<'SQL'
+-- psql does not substitute variables inside dollar quotes, so hand the
+-- expected version to the DO block through a setting instead.
+select set_config('check.version', :'version', false) as configured \gset
+
 do $check$
 declare
   latest text;
   kept int;
+  not_dumped text;
 begin
-  if (select extversion from pg_extension where extname = 'pg_statecharts') <> '0.1.0' then
-    raise exception 'extension was not upgraded';
+  if (select extversion from pg_extension where extname = 'pg_statecharts') <> current_setting('check.version') then
+    raise exception 'extension was not upgraded to %', current_setting('check.version');
+  end if;
+
+  -- 0.0.0 never registered its tables with pg_dump, which is why backups
+  -- taken under it hold no machines. The upgrade has to register every table
+  -- and sequence in fsm.
+  select string_agg(c.oid::regclass::text, ', ' order by c.oid::regclass::text)
+  into not_dumped
+  from pg_class c
+  where c.relnamespace = 'fsm'::regnamespace
+    and c.relkind in ('r', 'S')
+    and not exists (
+      select 1 from pg_extension e
+      where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
+    );
+  if not_dumped is not null then
+    raise exception 'not registered for pg_dump after the upgrade: %', not_dumped;
   end if;
 
   if exists (select 1 from pg_extension where extname = 'semver') then

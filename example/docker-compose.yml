@@ -26,9 +26,13 @@ services:
       # An arbitrary uid has no /etc/passwd entry, so psql cannot guess the
       # database user from the OS user.
       PGUSER: postgres
-      # ...and for the same reason sqitch cannot work out who is running it.
-      SQITCH_FULLNAME: ${SQITCH_FULLNAME:-pg_statecharts example}
-      SQITCH_EMAIL: ${SQITCH_EMAIL:-example@pg-statecharts.invalid}
+      # ...and for the same reason sqitch cannot work out who is deploying.
+      # It used to read that from ~/.sqitch/sqitch.conf, but mounting yours
+      # at /root/.sqitch no longer helps: the container is not running as
+      # root and there is no home directory to look in. `make setup` writes
+      # these two into .env from your git config.
+      SQITCH_FULLNAME: ${SQITCH_FULLNAME:-${USER}}
+      SQITCH_EMAIL: ${SQITCH_EMAIL:-${USER}@localhost}
     working_dir: /repo
 
 volumes:
