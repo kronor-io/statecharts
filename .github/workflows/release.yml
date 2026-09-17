@@ -1,27 +1,18 @@
+# A tag push and nothing else. To release: bump default_version in both control
+# files, merge that to master, then tag the merge commit v<version> and push the
+# tag. The build job checks the tag against the control file and refuses if they
+# disagree, so a tag alone cannot publish the wrong version.
 on:
   push:
     tags:
       - 'v*'
-  # Pull requests build and smoke test the very same packages and attach them
-  # to the workflow run, so they can be tried out before anything is released.
-  # Only a tag push publishes a GitHub release.
-  #
-  # TEMPORARY, for reviewing #44. Remove these two triggers once it is merged:
-  # releases should happen only when a version bump lands on master and gets
-  # tagged, and the packaging is exercised by the tag run itself.
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    branches:
-      - master
-  workflow_dispatch:
 
 name: Release
 
 jobs:
-  # Read-only: this job runs scripts/package_release.sh from the branch under
-  # review, so it must not hold a token that could write to the repository.
-  # Publishing is a separate job, gated on the tag, and that is where the write
-  # scope lives.
+  # Read-only: this job runs scripts/package_release.sh out of the checkout, so
+  # it must not hold a token that could write to the repository. Publishing is
+  # a separate job, and that is where the write scope lives.
   build:
     runs-on: ubuntu-24.04
     permissions:
@@ -109,8 +100,10 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
 
-  # The only job with write access, and it runs nothing from the branch: it
-  # downloads what build already made and smoke tested, and publishes it.
+  # The only job with write access, and it runs nothing from the checkout: it
+  # downloads what build already made and smoke tested, and publishes it. The
+  # ref_type guard is redundant while the workflow only runs on tags, and is
+  # kept so that adding another trigger cannot quietly start publishing.
   publish:
     needs: build
     if: github.ref_type == 'tag'
