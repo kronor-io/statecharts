@@ -102,10 +102,11 @@ on the built-in `fsm.semver` domain and the `semver` extension gone.
 | Deployed from `deploy/` with sqitch | `create extension pg_statecharts version 'sqitch';` then `alter extension pg_statecharts update;` |
 
 In every case the new extension files have to be installed first, as described
-under [Installing](#installing). The two upgrades are covered by CI: one job
-installs 0.0.0 with data and upgrades it, another deploys `deploy/` with
-sqitch, adopts it, upgrades it and checks the result owns exactly the objects a
-fresh install does.
+under [Installing](#installing). The sqitch upgrade is covered by CI: a job
+deploys `deploy/` with sqitch, adopts it, upgrades it and checks the result
+owns exactly the objects a fresh install does. The 0.0.0 path is not exercised
+any more -- the last database on 0.0.0 has been migrated -- but the upgrade
+script is still shipped, and the sqitch path runs through it.
 
 ### Fresh install
 

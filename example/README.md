@@ -96,8 +96,10 @@ database host, and there is no reason for it to exist in production.
   you are, does not work any more for the same reason: there is no home
   directory for it to land in. `make setup` takes the name and email from
   your git config and puts them in `.env`.
-- The image installs the extensions by copying files. No compiler, no PGXN
-  client, no server headers.
+- The image installs the extensions from the `.deb` packages attached to the
+  latest GitHub release, picking the ones built for its PostgreSQL major
+  version. No compiler, no PGXN client, no server headers. Rebuild with
+  `docker compose build --pull --no-cache db` to pick up a newer release.
 - `mkdir -p sqitch/{deploy,revert,verify}/statechart` is done by `make setup`,
   because SQL cannot create directories.
 

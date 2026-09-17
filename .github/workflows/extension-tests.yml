@@ -70,7 +70,7 @@ jobs:
           cat /tmp/pg.log || true
 
   upgrade:
-    name: upgrade from 0.0.0 and from sqitch
+    name: upgrade from sqitch
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     container: postgres:18
@@ -84,8 +84,8 @@ jobs:
           apt-get -qq update
           apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient ca-certificates sqitch
 
-      # Both the 0.0.0 install and the sqitch deployment used the semver
-      # extension, so the upgrade paths can only be exercised with it present.
+      # The sqitch deployment used the semver extension, so the upgrade path
+      # can only be exercised with it present.
       - name: Install semver
         run: pgxn install semver
 
@@ -107,15 +107,10 @@ jobs:
           PGUSER: postgres
         run: .github/scripts/check_dump_restore.sh
 
-      - name: Check the upgrade converts data and drops semver
-        env:
-          PGHOST: /tmp
-          PGUSER: postgres
-        run: .github/scripts/check_upgrade.sh
-
       # A database deployed from deploy/ with sqitch has every object already;
-      # the 'sqitch' version adopts them and the update then follows the 0.0.0
-      # path. The result has to own exactly what a fresh install owns.
+      # the 'sqitch' version adopts them and the update then converts the
+      # version column off the semver extension and drops it. The result has to
+      # own exactly what a fresh install owns.
       - name: Check a sqitch deployment can be adopted and upgraded
         env:
           PGHOST: /tmp
