@@ -1,0 +1,128 @@
+# A tag push and nothing else. To release: bump default_version in both control
+# files, merge that to master, then tag the merge commit v<version> and push the
+# tag. The build job checks the tag against the control file and refuses if they
+# disagree, so a tag alone cannot publish the wrong version.
+on:
+  push:
+    tags:
+      - 'v*'
+
+name: Release
+
+jobs:
+  # Read-only: this job runs scripts/package_release.sh out of the checkout, so
+  # it must not hold a token that could write to the repository. Publishing is
+  # a separate job, and that is where the write scope lives.
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read the extension version
+        run: |
+          set -eu
+          CONTROL_VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" \
+            pg_statecharts/pg_statecharts.control)
+          echo "version=$CONTROL_VERSION" >> "$GITHUB_ENV"
+
+      - name: Check the tag matches the extension version
+        if: github.ref_type == 'tag'
+        run: |
+          set -eu
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$version" != "$TAG_VERSION" ]; then
+            echo "tag $GITHUB_REF_NAME does not match default_version $version" >&2
+            echo "in pg_statecharts/pg_statecharts.control" >&2
+            exit 1
+          fi
+
+      # Nothing is compiled, so there is no build matrix: one tarball works
+      # everywhere, and the .deb per PostgreSQL major exists only because
+      # Debian puts extensions under a versioned path. All of it takes seconds.
+      - name: Build packages
+        run: ./scripts/package_release.sh dist
+
+      # The runtime deb has to stand on its own, and the dev deb has to refuse
+      # to install without it, or the split buys nothing.
+      - name: Smoke test the packages
+        run: |
+          set -eu
+          for pg in 16 17 18; do
+            docker run --rm -d --name smoke$pg \
+              -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:$pg
+            for i in $(seq 30); do
+              docker exec smoke$pg pg_isready -U postgres >/dev/null 2>&1 && break
+              sleep 1
+            done
+            docker cp "dist/pg-statecharts-${pg}_${version}.deb" smoke$pg:/tmp/runtime.deb
+            docker cp "dist/pg-statecharts-dev-${pg}_${version}.deb" smoke$pg:/tmp/dev.deb
+
+            # dev alone must fail on the missing dependency, and must not leave
+            # anything behind that would make the later checks pass by accident
+            if docker exec smoke$pg dpkg -i /tmp/dev.deb; then
+              echo "pg$pg: dev package installed without the runtime package" >&2
+              exit 1
+            fi
+            docker exec smoke$pg dpkg --purge pg-statecharts-dev-$pg
+
+            # runtime alone must work, and must not ship the dev files
+            docker exec smoke$pg dpkg -i /tmp/runtime.deb
+            if docker exec smoke$pg test -e /usr/share/postgresql/$pg/extension/pg_statecharts_dev.control; then
+              echo "pg$pg: runtime package contains the dev extension" >&2
+              exit 1
+            fi
+            docker exec smoke$pg psql -U postgres -v ON_ERROR_STOP=1 \
+              -c 'create extension pg_statecharts cascade'
+
+            # dev on top of runtime must work
+            docker exec smoke$pg dpkg -i /tmp/dev.deb
+            docker exec smoke$pg psql -U postgres -v ON_ERROR_STOP=1 \
+              -c 'create extension pg_statecharts_dev'
+            docker rm -f smoke$pg
+            echo "pg$pg ok"
+          done
+
+      - name: Attach packages to the workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg_statecharts-${{ env.version }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Pass the version on to the release job
+        run: echo "version=$version" >> "$GITHUB_OUTPUT"
+        id: v
+
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+
+  # The only job with write access, and it runs nothing from the checkout: it
+  # downloads what build already made and smoke tested, and publishes it. The
+  # ref_type guard is redundant while the workflow only runs on tags, and is
+  # kept so that adding another trigger cannot quietly start publishing.
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          name: pg_statecharts-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          name: Release ${{ needs.build.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
