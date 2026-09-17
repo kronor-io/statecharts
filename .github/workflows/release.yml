@@ -18,10 +18,14 @@ on:
 name: Release
 
 jobs:
-  release:
+  # Read-only: this job runs scripts/package_release.sh from the branch under
+  # review, so it must not hold a token that could write to the repository.
+  # Publishing is a separate job, gated on the tag, and that is where the write
+  # scope lives.
+  build:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -98,12 +102,34 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      - name: Pass the version on to the release job
+        run: echo "version=$version" >> "$GITHUB_OUTPUT"
+        id: v
+
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+
+  # The only job with write access, and it runs nothing from the branch: it
+  # downloads what build already made and smoke tested, and publishes it.
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          name: pg_statecharts-${{ needs.build.outputs.version }}
+          path: dist
+
       - name: Create release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
-          name: Release ${{ env.version }}
+          name: Release ${{ needs.build.outputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

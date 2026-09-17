@@ -23,6 +23,64 @@ members() {
     order by 1"
 }
 
+definitions() {
+  # The same objects, but their structure rather than their names. members()
+  # only proves the adoption found everything; it would not notice a column
+  # left on the old type, a constraint that never got recreated, or an index
+  # or trigger with a different definition. pg_dump is no help here, because
+  # it deliberately omits extension members.
+  #
+  # Function bodies are deliberately left out. Adoption is
+  # ALTER EXTENSION ... ADD: it takes ownership of the bodies sqitch deployed
+  # rather than rewriting them, so they differ from a fresh install's in
+  # indentation throughout while being the same code. Comparing them would
+  # mean normalising whitespace until the comparison said nothing.
+  $PSQL -tA -d "$1" -c "
+    with members as (
+      select classid, objid
+      from pg_depend
+      where refclassid = 'pg_extension'::regclass
+        and refobjid = (select oid from pg_extension where extname = 'pg_statecharts')
+        and deptype = 'e'
+    ),
+    tables as (select objid from members where classid = 'pg_class'::regclass),
+    types as (select objid from members where classid = 'pg_type'::regclass)
+    select def from (
+      select pg_describe_object('pg_class'::regclass, a.attrelid, a.attnum)
+             || ' :: ' || format_type(a.atttypid, a.atttypmod)
+             || case when a.attnotnull then ' not null' else '' end
+             || coalesce(' default ' || pg_get_expr(d.adbin, d.adrelid), '') as def
+      from pg_attribute a
+      join tables t on t.objid = a.attrelid
+      left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+      where a.attnum > 0 and not a.attisdropped
+
+      union all
+
+      select pg_describe_object('pg_constraint'::regclass, c.oid, 0)
+             || ' :: ' || pg_get_constraintdef(c.oid)
+      from pg_constraint c
+      where c.conrelid in (select objid from tables)
+         or c.contypid in (select objid from types)
+
+      union all
+
+      select pg_describe_object('pg_class'::regclass, i.indexrelid, 0)
+             || ' :: ' || pg_get_indexdef(i.indexrelid)
+      from pg_index i
+      where i.indrelid in (select objid from tables)
+
+      union all
+
+      select pg_describe_object('pg_trigger'::regclass, tg.oid, 0)
+             || ' :: ' || pg_get_triggerdef(tg.oid)
+      from pg_trigger tg
+      where tg.tgrelid in (select objid from tables)
+        and not tg.tgisinternal
+    ) d
+    order by 1"
+}
+
 echo "--- deploying the sqitch schema with data ---"
 $PSQL -c "drop database if exists adopt_check"
 $PSQL -c "create database adopt_check"
@@ -133,6 +191,21 @@ begin
     raise exception 'not registered for pg_dump after adoption: %', not_dumped;
   end if;
 
+  -- Adoption keeps the bodies sqitch deployed, which is why definitions()
+  -- does not compare them. These two are the exception: they fire while
+  -- pg_restore loads the fsm tables, with an empty search_path, so the
+  -- upgrade has to have replaced the sqitch bodies with the schema qualified
+  -- ones. Nothing else would notice if it had not.
+  if exists (
+    select 1
+    from pg_proc
+    where oid in ('fsm.trig_set_state_parent_path()'::regprocedure,
+                  'fsm.trig_check_no_duplicate_event_handler()'::regprocedure)
+      and prosrc not like '%public.%'
+  ) then
+    raise exception 'the restore-time triggers still carry unqualified ltree references';
+  end if;
+
   if exists (select 1 from pg_extension where extname = 'semver') then
     raise exception 'the semver extension should have been dropped';
   end if;
@@ -201,8 +274,13 @@ for adopted in adopt_check adopt_onego; do
     echo "(< fresh install, > adopted)" >&2
     exit 1
   fi
+  if ! diff <(definitions adopt_fresh) <(definitions "$adopted"); then
+    echo "error: $adopted has the same objects as a fresh install but not the same definitions" >&2
+    echo "(< fresh install, > adopted)" >&2
+    exit 1
+  fi
 done
-echo "the adopted extensions own exactly what a fresh install does"
+echo "the adopted extensions own exactly what a fresh install does, with the same definitions"
 
 echo "--- checking sqitch can no longer drop what the extension owns ---"
 # Reverting this far first undoes the two handle_machine_events reworks, whose

@@ -25,19 +25,35 @@ select fsm.to_semver('1.10.0') = array[1,10,0] as is_an_int_array,
 (1 row)
 
 -- rejected versions
+-- The inner block is what catches, so that the "should have been rejected"
+-- raise cannot be swallowed by the handler meant for to_semver's own error.
 do $$
+declare rejected boolean := false;
 begin
-  perform fsm.to_semver('1.2.3.4');
-  raise exception 'should have been rejected';
-exception when others then
+  begin
+    perform fsm.to_semver('1.2.3.4');
+  exception when others then
+    rejected := true;
+  end;
+
+  if not rejected then
+    raise exception '1.2.3.4 should have been rejected';
+  end if;
   raise notice 'rejected 1.2.3.4';
 end $$;
 NOTICE:  rejected 1.2.3.4
 do $$
+declare rejected boolean := false;
 begin
-  perform fsm.to_semver('banana');
-  raise exception 'should have been rejected';
-exception when others then
+  begin
+    perform fsm.to_semver('banana');
+  exception when others then
+    rejected := true;
+  end;
+
+  if not rejected then
+    raise exception 'banana should have been rejected';
+  end if;
   raise notice 'rejected banana';
 end $$;
 NOTICE:  rejected banana

@@ -60,8 +60,8 @@ Events drive transitions; the machine is always in exactly one active state (or 
 
 | Dependency | Notes |
 |---|---|
-| PostgreSQL ≥ 13 | Tested on 13+ |
-| [`ltree`](https://www.postgresql.org/docs/current/ltree.html) extension | Ships with PostgreSQL |
+| PostgreSQL | The sqitch path under `deploy/` works on 13+. The extension is tested on 16, 17 and 18, which is what CI runs. |
+| [`ltree`](https://www.postgresql.org/docs/current/ltree.html) extension | Ships with PostgreSQL. The extension needs it in `public`; see [pg_statecharts](pg_statecharts/README.md#installing). |
 | [`semver`](https://pgxn.org/dist/semver/) extension | Only for the sqitch path; the extension needs no compiler and no `semver` |
 | [sqitch](https://sqitch.org) | Change-management tool used to deploy migrations |
 

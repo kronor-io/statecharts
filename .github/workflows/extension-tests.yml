@@ -51,6 +51,22 @@ jobs:
           ./pg_statecharts/install.sh
           ./pg_statecharts_dev/install.sh
 
+      # install.sh is the single implementation of "assemble and lay out the
+      # extension files" -- scripts/package_release.sh builds the debs with it
+      # -- and the claim that make install produces the same files is what
+      # makes that safe. They agree today; this is what keeps them agreeing
+      # when a part is added to parts.txt or the generated header changes.
+      - name: Check install.sh and make install agree
+        run: |
+          set -eu
+          EXT_DIR="$(pg_config --sharedir)/extension"
+          for ext in pg_statecharts pg_statecharts_dev; do
+            version=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" "$ext/$ext.control")
+            cp "$EXT_DIR/$ext--$version.sql" "/tmp/$ext-from-sh.sql"
+            make -C "$ext" install >/dev/null
+            diff "/tmp/$ext-from-sh.sql" "$EXT_DIR/$ext--$version.sql"
+          done
+
       - name: Run tests
         env:
           PGHOST: /tmp

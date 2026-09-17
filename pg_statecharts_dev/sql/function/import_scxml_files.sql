@@ -97,6 +97,10 @@ $$
               and p.proname = function_name
               and p.pronargs = 1
               and p.proargtypes[0] = 'fsm_event_payload'::regtype::oid
+              -- an ordinary function, not a procedure, aggregate or window
+              -- function: the runtime invokes callbacks with SELECT, which
+              -- only works for prokind = 'f'
+              and p.prokind = 'f'
           );
 
         if missing_functions is not null then
@@ -105,7 +109,8 @@ $$
           raise exception '% version % references functions that do not exist: %',
             chart.name, fsm.semver_text(chart.version), missing_functions
             using hint = 'every on_entry and on_exit callback has to already '
-                         'exist and take exactly one fsm_event_payload argument';
+                         'exist as an ordinary function taking exactly one '
+                         'fsm_event_payload argument';
         end if;
 
         return next chart;

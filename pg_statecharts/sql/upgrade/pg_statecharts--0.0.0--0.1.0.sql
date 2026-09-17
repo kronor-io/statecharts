@@ -31,9 +31,56 @@
 
 \echo Use "ALTER EXTENSION pg_statecharts UPDATE" to load this file. \quit
 
+-- The trigger bodies installed below write public.ltree, for the pg_restore
+-- reason explained where they are defined. Refuse the upgrade rather than
+-- install bodies that cannot resolve their own types; the same check runs on a
+-- fresh install, in sql/schema.sql.
+do $ltree_check$
+declare
+  ltree_schema name;
+begin
+  if to_regtype('public.ltree') is null then
+    select n.nspname into ltree_schema
+    from pg_extension e
+    join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'ltree';
+
+    raise exception 'pg_statecharts requires the ltree extension in the public schema'
+      using detail = case
+              when ltree_schema is null then 'ltree is not installed'
+              else format('ltree is installed in schema %I', ltree_schema)
+            end,
+            hint = 'alter extension ltree set schema public; then run the update again';
+  end if;
+end
+$ltree_check$;
+
 -- The old file generating functions were C functions backed by pg_statecharts.so.
 drop function if exists fsm.import_scxml_files(text, boolean, boolean);
 drop function if exists fsm.gen_statechart_sqitch_migrations(text, text, boolean, boolean);
+
+-- Nothing in the pure SQL extension is a C function, so anything still backed
+-- by C in fsm is a function 0.0.0 created under a signature the two drops
+-- above do not match. Its pg_statecharts.so goes away with the old package, so
+-- say so now rather than let the next caller find out.
+do $leftover_c$
+declare
+  leftover text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text)
+  into leftover
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  join pg_language l on l.oid = p.prolang
+  where n.nspname = 'fsm' and l.lanname = 'c';
+
+  if leftover is not null then
+    raise warning 'C functions left in fsm after the upgrade: %', leftover
+      using hint = 'these are backed by pg_statecharts.so, which the 0.1.0 '
+                   'package removes; drop them by hand';
+  end if;
+end
+$leftover_c$;
 
 -- 0.0.0 shipped '^[a-za-z0-9_]+$' for this constraint: the A-Z range had been
 -- flattened to a second a-z by a stray lowercasing, so state ids containing
@@ -173,7 +220,7 @@ $$
 
     return string_to_array(padded, '.')::integer[]::fsm.semver;
   end;
-$$ language plpgsql immutable;
+$$ language plpgsql immutable parallel safe;
 
 comment on function fsm.to_semver(text) is $comment$
     Parses text into an fsm.semver, padding out omitted components so that '1'
@@ -219,7 +266,7 @@ do $shim$
     returns fsm.semver as
     $body$
       select fsm.to_semver(version)
-    $body$ language sql immutable;
+    $body$ language sql immutable parallel safe;
 
     comment on function to_semver(text) is $c$
     Deprecated alias for fsm.to_semver(text), kept so that statechart

@@ -347,6 +347,33 @@ $gen$
       end loop;
     end;
 
+    -- Two files can render to the same migration name: the same chart name and
+    -- version in both, or names that differ only in where a dot becomes a
+    -- directory separator, such as 'a.b' and 'a/b'. Each chart is dry run in
+    -- its own rolled back subtransaction, so the unique index on
+    -- (name, version) never sees them together and cannot catch this. The
+    -- write loop below would let the later file overwrite the earlier one's
+    -- three files while adding a single plan entry, so the loser would vanish
+    -- without a word.
+    declare
+      duplicates text;
+    begin
+      select string_agg(format('%s: %s', d.migration_name, d.files), E'\n' order by d.migration_name)
+      into duplicates
+      from (
+        select migration_name, string_agg(file_path, ', ' order by file_path) as files
+        from __pg_statecharts_migrations
+        group by migration_name
+        having count(*) > 1
+      ) d;
+
+      if duplicates is not null then
+        raise exception 'more than one .scxml file generates the same migration'
+          using detail = duplicates,
+                hint = 'give the charts different names or versions; nothing has been written';
+      end if;
+    end;
+
     if not exists (select 1 from __pg_statecharts_migrations) then
       raise exception 'no .scxml files found at %', source_path
         using hint = case
@@ -357,6 +384,8 @@ $gen$
 
     -- Check every output directory before writing anything, so that a missing
     -- verify/ directory cannot leave a half written set of migrations behind.
+    -- "is not true" rather than "is null" so that a path that exists but is a
+    -- regular file is caught here too, instead of on the write that follows.
     declare
       missing text[];
     begin
@@ -372,7 +401,7 @@ $gen$
       cross join lateral (
         select regexp_replace(paths.path, '/[^/]*$', '') as dir
       ) as d
-      where pg_stat_file(d.dir, true) is null;
+      where (pg_stat_file(d.dir, true)).isdir is not true;
 
       if missing is not null then
         -- The hint lists exactly the directories that are missing, which is
@@ -411,11 +440,14 @@ $gen$
 
       -- A sqitch change line starts with the change name followed by
       -- whitespace, so the first token is enough to tell whether the plan
-      -- already knows about this migration.
+      -- already knows about this migration. Any whitespace: a plan that
+      -- separates the name from the timestamp with a tab would otherwise look
+      -- like a plan that does not have the change at all, and the migration
+      -- would be appended a second time.
       if exists (
         select 1
         from unnest(string_to_array(plan_contents, E'\n')) as line
-        where split_part(line, ' ', 1) = migration.migration_name
+        where (regexp_match(line, '^(\S+)'))[1] = migration.migration_name
       ) then
         raise info 'updated existing migration: %', migration.migration_name;
       else

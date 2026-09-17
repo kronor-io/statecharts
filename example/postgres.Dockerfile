@@ -27,6 +27,9 @@ RUN set -eux; \
     JQ_QUERY='.assets[] | select(.name | startswith($PATTERN)) | .browser_download_url'; \
     DOWNLOAD_URL=$(curl -sS https://api.github.com/repos/kronor-io/statecharts/releases/latest \
       | jq -r --arg PATTERN "$RELEASE_NAME_PATTERN" "$JQ_QUERY"); \
+    [ -n "$DOWNLOAD_URL" ] || { \
+      echo "no ${RELEASE_NAME_PATTERN}*.deb in the latest release" >&2; exit 1; \
+    }; \
     curl -fsSL -o /tmp/extension.deb "$DOWNLOAD_URL"; \
     dpkg -i /tmp/extension.deb; \
     rm /tmp/extension.deb; \

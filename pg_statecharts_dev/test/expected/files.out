@@ -190,7 +190,7 @@ select fsm.__write_file(:'dir' || '_missing_cb-1.0.scxml',
 select name from fsm.import_scxml_files(:'dir' || '_missing_cb-1.0.scxml');
 ERROR:  missing_cb version 1.0.0 references functions that do not exist: public.no_such_callback
 DETAIL:  while importing /tmp/pg_statecharts_test_missing_cb-1.0.scxml
-HINT:  every on_entry and on_exit callback has to already exist and take exactly one fsm_event_payload argument
+HINT:  every on_entry and on_exit callback has to already exist as an ordinary function taking exactly one fsm_event_payload argument
 -- nothing was left behind by the failed import
 select count(*) as charts from fsm.statechart;
  charts 
@@ -198,6 +198,22 @@ select count(*) as charts from fsm.statechart;
       0
 (1 row)
 
+-- a procedure with the right name and argument type is not a usable callback:
+-- the runtime invokes callbacks with SELECT, which only works for a function
+create procedure proc_callback(fsm_event_payload) language sql as $$ select 1 $$;
+select fsm.__write_file(:'dir' || '_proc_cb-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="proc_cb" version="1.0" initial="s">'
+  '<state id="s" name="S"><onentry><script src="proc_callback"/></onentry></state></scxml>');
+ __write_file 
+--------------
+ 
+(1 row)
+
+select name from fsm.import_scxml_files(:'dir' || '_proc_cb-1.0.scxml');
+ERROR:  proc_cb version 1.0.0 references functions that do not exist: public.proc_callback
+DETAIL:  while importing /tmp/pg_statecharts_test_proc_cb-1.0.scxml
+HINT:  every on_entry and on_exit callback has to already exist as an ordinary function taking exactly one fsm_event_payload argument
+drop procedure proc_callback(fsm_event_payload);
 -- a malformed document names the file it came from
 select fsm.__write_file(:'dir' || '_broken-1.0.scxml', 'this is not xml at all');
  __write_file 

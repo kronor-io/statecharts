@@ -82,7 +82,7 @@ $$
 
     return string_to_array(padded, '.')::integer[]::fsm.semver;
   end;
-$$ language plpgsql immutable;
+$$ language plpgsql immutable parallel safe;
 
 comment on function fsm.to_semver(text) is $comment$
     Parses text into an fsm.semver, padding out omitted components so that '1'
@@ -146,7 +146,7 @@ do $shim$
     returns fsm.semver as
     $body$
       select fsm.to_semver(version)
-    $body$ language sql immutable;
+    $body$ language sql immutable parallel safe;
 
     comment on function to_semver(text) is $c$
     Deprecated alias for fsm.to_semver(text), kept so that statechart

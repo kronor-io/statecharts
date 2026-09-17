@@ -38,10 +38,13 @@ fi
 
 # Debian package names cannot contain underscores in the version, and sqitch
 # style versions are already fine, but be explicit about what we support.
-case "$VERSION" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) echo "error: '$VERSION' does not look like a release version" >&2; exit 1 ;;
-esac
+# A glob would not do: [0-9]* matches any string starting with a digit, so
+# '1.2.3_bad' would pass one and still be rejected by dpkg.
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "error: '$VERSION' does not look like a release version" >&2
+  echo "expected three dot separated numbers, e.g. 0.1.0" >&2
+  exit 1
+fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -60,7 +63,7 @@ for ext in pg_statecharts pg_statecharts_dev; do
   cp -r "$ext/sql" "$PKG/$ext/"
   cp "$ext/$ext.control" "$ext/install.sh" "$ext/README.md" "$PKG/$ext/"
 done
-cp README.md LICENSE "$PKG/" 2>/dev/null || cp README.md "$PKG/"
+cp README.md "$PKG/"
 
 cat > "$PKG/install.sh" <<'INSTALLER'
 #!/bin/sh

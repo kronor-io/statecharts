@@ -107,6 +107,15 @@ select name from fsm.import_scxml_files(:'dir' || '_missing_cb-1.0.scxml');
 -- nothing was left behind by the failed import
 select count(*) as charts from fsm.statechart;
 
+-- a procedure with the right name and argument type is not a usable callback:
+-- the runtime invokes callbacks with SELECT, which only works for a function
+create procedure proc_callback(fsm_event_payload) language sql as $$ select 1 $$;
+select fsm.__write_file(:'dir' || '_proc_cb-1.0.scxml',
+  '<scxml xmlns="http://www.w3.org/2005/07/scxml" name="proc_cb" version="1.0" initial="s">'
+  '<state id="s" name="S"><onentry><script src="proc_callback"/></onentry></state></scxml>');
+select name from fsm.import_scxml_files(:'dir' || '_proc_cb-1.0.scxml');
+drop procedure proc_callback(fsm_event_payload);
+
 -- a malformed document names the file it came from
 select fsm.__write_file(:'dir' || '_broken-1.0.scxml', 'this is not xml at all');
 select name from fsm.import_scxml_files(:'dir' || '_broken-1.0.scxml');
