@@ -58,9 +58,20 @@ Tested against PostgreSQL 16, 17 and 18.
 
 `pg_dump` leaves out the tables of an extension unless the extension asks for
 them to be included. pg_statecharts does, for every table and sequence in the
-`fsm` schema, so a plain `pg_dump` of your database contains the statecharts,
-the machines, their current states and their event log, and `pg_restore` puts
-them back with the sequences continuing where they left off.
+`fsm` schema but one, so a plain `pg_dump` of your database contains the
+statecharts, the machines and their current states, and `pg_restore` puts them
+back with the sequences continuing where they left off.
+
+The one exception is `fsm.state_machine_event`, the inbox queue, which stays
+out of the dump along with its sequence. An event is handled in the same
+transaction that inserts it, so a committed row has already been applied and
+the state it produced is in the backup; what remains is a debugging log that
+grows much faster than it is ever read. Leaving it out also avoids a hazard:
+the insert trigger fires while `pg_restore` loads rows, so an event that did
+somehow sit unhandled in the dump would be handled again on the restored
+database, moving machines that were dumped in a settled state and running
+their `on_entry` and `on_exit` callbacks a second time. A restored database
+starts with an empty event queue.
 
 **0.0.0 did not.** A backup taken under 0.0.0 holds every application row with
 its `state_machine_id` and none of the machines those ids point at. Restoring

@@ -12,12 +12,22 @@
 -- foreign keys between these tables, and the triggers on fsm.state and
 -- fsm.transition qualify their ltree references so that they work under the
 -- empty search_path that pg_restore loads data with.
+--
+-- fsm.state_machine_event and its sequence are deliberately left out. The
+-- table is an inbox queue, not state: fsm.handle_machine_events consumes an
+-- event in the same transaction that inserts it, so a committed row is always
+-- one that has already been applied to fsm.state_machine_state, and the state
+-- it produced is in the backup. What is left is a log kept for debugging,
+-- which grows far too fast to be worth carrying in every dump. Restoring it
+-- would also be a hazard rather than a help: the insert trigger fires while
+-- pg_restore loads the rows, so any event that did somehow sit unhandled in
+-- the dump would be handled again on the restored database, moving machines
+-- that were dumped in a settled state and firing their on_entry and on_exit
+-- callbacks a second time.
 select pg_catalog.pg_extension_config_dump('fsm.statechart', '');
 select pg_catalog.pg_extension_config_dump('fsm.state', '');
 select pg_catalog.pg_extension_config_dump('fsm.transition', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine_state', '');
-select pg_catalog.pg_extension_config_dump('fsm.state_machine_event', '');
 select pg_catalog.pg_extension_config_dump('fsm.statechart_id_seq', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine_id_seq', '');
-select pg_catalog.pg_extension_config_dump('fsm.state_machine_event_id_seq', '');

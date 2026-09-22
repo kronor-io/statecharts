@@ -381,12 +381,18 @@ $$ language plpgsql;
 -- as configuration tables. This is what makes the fsm data part of a backup
 -- from here on; the sequences are included so that a restored database keeps
 -- numbering where the dumped one stopped.
+--
+-- fsm.state_machine_event and its sequence are left out on purpose. The table
+-- is an inbox queue that fsm.handle_machine_events drains in the transaction
+-- that fills it, so a committed row has already been applied to
+-- fsm.state_machine_state and the state it produced is in the backup. The rest
+-- is a debugging log that grows far too fast to carry in every dump, and
+-- restoring it would re-fire the insert trigger on rows that pg_restore loads,
+-- handling any stray unhandled event a second time on the restored database.
 select pg_catalog.pg_extension_config_dump('fsm.statechart', '');
 select pg_catalog.pg_extension_config_dump('fsm.state', '');
 select pg_catalog.pg_extension_config_dump('fsm.transition', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine_state', '');
-select pg_catalog.pg_extension_config_dump('fsm.state_machine_event', '');
 select pg_catalog.pg_extension_config_dump('fsm.statechart_id_seq', '');
 select pg_catalog.pg_extension_config_dump('fsm.state_machine_id_seq', '');
-select pg_catalog.pg_extension_config_dump('fsm.state_machine_event_id_seq', '');

@@ -204,7 +204,7 @@ erDiagram
 **`fsm.transition`** — which event moves the machine from `source_state` to `target_state`.  
 **`fsm.state_machine`** — a running instance of a statechart.  
 **`fsm.state_machine_state`** — append-only log; `exited_at IS NULL` marks the currently active state(s).  
-**`fsm.state_machine_event`** — inbox queue; `handled_at IS NULL` means the event is pending.
+**`fsm.state_machine_event`** — inbox queue; `handled_at IS NULL` means the event is pending. Drained in the transaction that fills it, so it is a debugging log rather than state and is [left out of backups](pg_statecharts/README.md#backups).
 
 ---
 

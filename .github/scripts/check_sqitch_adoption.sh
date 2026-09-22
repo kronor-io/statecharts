@@ -177,18 +177,31 @@ begin
 
   -- The adopted tables and sequences have to end up registered with pg_dump
   -- like a fresh install's, or the backups of a migrated database keep
-  -- missing the machines.
+  -- missing the machines. fsm.state_machine_event and its sequence are the
+  -- exception a fresh install makes too: the event queue is drained in the
+  -- transaction that fills it, so it is a debugging log rather than state, and
+  -- restoring it would re-fire the insert trigger. See sql/dump.sql.
   select string_agg(c.oid::regclass::text, ', ' order by c.oid::regclass::text)
   into not_dumped
   from pg_class c
   where c.relnamespace = 'fsm'::regnamespace
     and c.relkind in ('r', 'S')
+    and not (c.oid::regclass = any (array['fsm.state_machine_event',
+                                          'fsm.state_machine_event_id_seq']::regclass[]))
     and not exists (
       select 1 from pg_extension e
       where e.extname = 'pg_statecharts' and c.oid = any (e.extconfig)
     );
   if not_dumped is not null then
     raise exception 'not registered for pg_dump after adoption: %', not_dumped;
+  end if;
+
+  if exists (
+    select 1 from pg_extension e
+    where e.extname = 'pg_statecharts'
+      and 'fsm.state_machine_event'::regclass = any (e.extconfig)
+  ) then
+    raise exception 'the event queue is registered for pg_dump; it is meant to stay out';
   end if;
 
   -- Adoption keeps the bodies sqitch deployed, which is why definitions()
