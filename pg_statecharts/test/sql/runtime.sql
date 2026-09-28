@@ -95,7 +95,9 @@ from lightswitch;
 -- pg_dump only includes an extension's tables when they are registered as
 -- configuration tables. Every table and sequence in fsm has to be, or a backup
 -- silently loses the machines while keeping the application rows that point at
--- them. Expect no rows.
+-- them. The one exception is the event queue, which is drained in the
+-- transaction that fills it and is kept out of the dump on purpose, so expect
+-- exactly it and its sequence.
 select c.relkind, c.oid::regclass as not_registered_for_pg_dump
 from pg_class c
 where c.relnamespace = 'fsm'::regnamespace
