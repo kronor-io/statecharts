@@ -4,3 +4,12 @@ dist-newstyle
 result*
 .pre-commit-config.yaml
 .direnv
+
+# built extension scripts (assembled from sql/parts.txt by make or install.sh)
+pg_statecharts/pg_statecharts--*.sql
+pg_statecharts_dev/pg_statecharts_dev--*.sql
+
+# pg_regress output
+*/test/results/
+*/test/regression.diffs
+*/test/regression.out
