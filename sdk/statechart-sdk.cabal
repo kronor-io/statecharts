@@ -5,7 +5,7 @@ description:    Statechart SDK (Statechart definitions and build tool)
 author:         Kronor.io
 maintainer:     dev@kronor.io
 copyright:      2021 Kronor
-license:        NONE
+license:        MIT
 build-type:     Simple
 
 common de
