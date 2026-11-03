@@ -33,15 +33,15 @@ BEGIN;
           then
               select s.id into new.state_machine_id
               from fsm.create_state_machine_with_latest_statechart(
-                  1,
-                  'lightswitch_flow'
+                  shard_id_ => 1,
+                  named => 'lightswitch_flow'
               ) s;
           end if;
           return new;
       end
   $$ language plpgsql volatile security definer;
 
-  create trigger create_lightswitch_flow
+  create or replace trigger create_lightswitch_flow
   before insert
   on lightswitch
   for each row
@@ -56,8 +56,8 @@ BEGIN;
       begin
 
           perform fsm.start_machine(
-              1,
-              new.state_machine_id
+              shard => 1,
+              machine_id => new.state_machine_id
           )
           from lightswitch
           where id = new.id;
@@ -66,7 +66,7 @@ BEGIN;
       end
   $$ language plpgsql volatile security definer;
 
-  create trigger start_lightswitch_flow
+  create or replace trigger start_lightswitch_flow
   after insert
   on lightswitch
   for each row
