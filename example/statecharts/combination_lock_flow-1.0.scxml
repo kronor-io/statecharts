@@ -1,0 +1,49 @@
+<scxml xmlns="http://www.w3.org/2005/07/scxml"
+              name="combination_lock_flow"
+              version="1.0.0"
+              initial="zero_correct">
+
+  <state id="zero_correct" name="ZERO_CORRECT">
+    <transition event="combination_lock.one" target="one_correct"/>
+
+    <onentry>
+      <script src="materialize_combination_lock_status" />
+    </onentry>
+  </state>
+
+  <state id="one_correct" name="ONE_CORRECT">
+    <transition event="combination_lock.zero" target="zero_correct"/>
+    <transition event="combination_lock.one" target="two_correct"/>
+
+    <onentry>
+      <script src="materialize_combination_lock_status" />
+    </onentry>
+  </state>
+
+  <state id="two_correct" name="TWO_CORRECT">
+    <transition event="combination_lock.zero" target="three_correct"/>
+    <transition event="combination_lock.one" target="zero_correct"/>
+
+    <onentry>
+      <script src="materialize_combination_lock_status" />
+    </onentry>
+  </state>
+
+  <state id="three_correct" name="THREE_CORRECT">
+    <transition event="combination_lock.zero" target="zero_correct"/>
+    <transition event="combination_lock.one" target="open"/>
+
+    <onentry>
+      <script src="materialize_combination_lock_status" />
+    </onentry>
+  </state>
+
+  <state id="open" name="OPEN">
+    <transition event="combination_lock.reset" target="zero_correct"/>
+
+    <onentry>
+      <script src="unlock_combination_lock" />
+    </onentry>
+  </state>
+
+</scxml>
