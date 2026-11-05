@@ -1,7 +1,18 @@
 # A tag push and nothing else. To release: bump default_version in both control
-# files, merge that to master, then tag the merge commit v<version> and push the
-# tag. The build job checks the tag against the control file and refuses if they
-# disagree, so a tag alone cannot publish the wrong version.
+# files and the matching version fields in both META.json files, merge that to
+# master, then tag the merge commit v<version> and push the tag. The build job
+# checks the tag against the control file and refuses if they disagree, so a tag
+# alone cannot publish the wrong version.
+#
+# PGXN is a separate, manual step, because uploading needs a PGXN account that
+# no workflow should hold. Once the tag is out, from a clean checkout of it:
+#
+#   make -C pg_statecharts dist
+#   make -C pg_statecharts_dev dist
+#
+# and upload the two zips at https://manager.pgxn.org/upload. The dist target
+# refuses to build an archive whose META.json disagrees with the control file,
+# so the zips cannot carry a version the release does not.
 on:
   push:
     tags:

@@ -9,6 +9,12 @@ result*
 pg_statecharts/pg_statecharts--*.sql
 pg_statecharts_dev/pg_statecharts_dev--*.sql
 
+# PGXN distribution archives (make dist)
+pg_statecharts/*.zip
+pg_statecharts_dev/*.zip
+pg_statecharts/pg_statecharts-*/
+pg_statecharts_dev/pg_statecharts_dev-*/
+
 # pg_regress output
 */test/results/
 */test/regression.diffs

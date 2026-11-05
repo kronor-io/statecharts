@@ -1,0 +1,57 @@
+{
+   "name": "pg_statecharts",
+   "abstract": "Statecharts (hierarchical state machines) in PostgreSQL",
+   "description": "Tables, types, triggers and functions for defining and running statecharts -- hierarchical state machines -- inside PostgreSQL. Statechart definitions are versioned rows, machines advance by handing events to a function, and the transition rules are enforced by constraints and triggers rather than by application code. This is the runtime half, the one to install on production servers; the tooling that turns .scxml files into statecharts and migrations is a separate extension, pg_statecharts_dev. Implemented entirely in SQL and PL/pgSQL, so there is nothing to compile and one set of files works on every PostgreSQL version, architecture and operating system.",
+   "version": "0.1.0",
+   "maintainer": [
+      "Kronor <dev@kronor.io>"
+   ],
+   "license": "mit",
+   "provides": {
+      "pg_statecharts": {
+         "file": "pg_statecharts--0.1.0.sql",
+         "docfile": "README.md",
+         "version": "0.1.0",
+         "abstract": "Statecharts (hierarchical state machines) in PostgreSQL"
+      }
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "16.0.0",
+            "plpgsql": 0,
+            "ltree": 0
+         }
+      }
+   },
+   "resources": {
+      "homepage": "https://github.com/kronor-io/statecharts",
+      "bugtracker": {
+         "web": "https://github.com/kronor-io/statecharts/issues"
+      },
+      "repository": {
+         "url": "https://github.com/kronor-io/statecharts.git",
+         "web": "https://github.com/kronor-io/statecharts",
+         "type": "git"
+      }
+   },
+   "no_index": {
+      "directory": [ "test" ],
+      "file": [ "sql/parts.txt" ]
+   },
+   "tags": [
+      "statechart",
+      "statecharts",
+      "state-machine",
+      "fsm",
+      "hierarchical-state-machine",
+      "scxml",
+      "workflow"
+   ],
+   "generated_by": "Kronor",
+   "release_status": "stable",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "https://pgxn.org/meta/spec.txt"
+   }
+}
