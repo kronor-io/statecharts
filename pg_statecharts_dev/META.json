@@ -36,7 +36,8 @@
       }
    },
    "no_index": {
-      "directory": [ "test" ]
+      "directory": [ "test" ],
+      "file": [ "sql/parts.txt" ]
    },
    "tags": [
       "statechart",
