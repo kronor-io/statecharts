@@ -1,0 +1,57 @@
+{
+   "name": "pg_statecharts_dev",
+   "abstract": "Development tooling for pg_statecharts: import .scxml files and generate sqitch migrations",
+   "description": "Turns .scxml files into statecharts in the database, either directly or as sqitch migrations. Both of its functions read files from the database host and one of them writes files too, which is why this is a separate extension from pg_statecharts: install it on development machines, not on production servers. Implemented entirely in SQL and PL/pgSQL, so there is nothing to compile and one set of files works on every PostgreSQL version, architecture and operating system.",
+   "version": "0.1.0",
+   "maintainer": [
+      "Kronor <dev@kronor.io>"
+   ],
+   "license": "mit",
+   "provides": {
+      "pg_statecharts_dev": {
+         "file": "pg_statecharts_dev--0.1.0.sql",
+         "docfile": "README.md",
+         "version": "0.1.0",
+         "abstract": "Development tooling for pg_statecharts: import .scxml files and generate sqitch migrations"
+      }
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "16.0.0",
+            "plpgsql": 0,
+            "pg_statecharts": "0.1.0"
+         }
+      }
+   },
+   "resources": {
+      "homepage": "https://github.com/kronor-io/statecharts",
+      "bugtracker": {
+         "web": "https://github.com/kronor-io/statecharts/issues"
+      },
+      "repository": {
+         "url": "https://github.com/kronor-io/statecharts.git",
+         "web": "https://github.com/kronor-io/statecharts",
+         "type": "git"
+      }
+   },
+   "no_index": {
+      "directory": [ "test" ]
+   },
+   "tags": [
+      "statechart",
+      "statecharts",
+      "state-machine",
+      "fsm",
+      "scxml",
+      "sqitch",
+      "migrations",
+      "code-generation"
+   ],
+   "generated_by": "Kronor",
+   "release_status": "stable",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "https://pgxn.org/meta/spec.txt"
+   }
+}

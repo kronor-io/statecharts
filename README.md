@@ -108,6 +108,15 @@ sudo dpkg -i pg-statecharts-18_0.1.0.deb                             # productio
 sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # development
 ```
 
+Both extensions are published on [PGXN](https://pgxn.org) as well, so
+[pgxnclient](https://pgxn.github.io/pgxnclient/) can fetch, build and install
+them straight from there:
+
+```bash
+pgxn install pg_statecharts          # production
+pgxn install pg_statecharts_dev      # development machines, on top of the runtime
+```
+
 See [pg_statecharts/README.md](pg_statecharts/README.md) for details, including
 how to upgrade from the older Rust build and what that means for your
 [backups](pg_statecharts/README.md#backups), and [example/](example) for a

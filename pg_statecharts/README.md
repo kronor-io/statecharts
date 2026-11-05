@@ -6,9 +6,10 @@ extension.
 This is the half you install in production: the tables that hold statechart
 definitions and running machines, and the functions that drive them. The
 tooling that turns `.scxml` files into migrations lives in a separate
-extension, [pg_statecharts_dev](../pg_statecharts_dev), so that nothing able to
-read and write files on the database host has to be installed on a production
-server.
+extension,
+[pg_statecharts_dev](https://github.com/kronor-io/statecharts/tree/master/pg_statecharts_dev),
+so that nothing able to read and write files on the database host has to be
+installed on a production server.
 
 ## Installing
 
@@ -130,8 +131,9 @@ script is still shipped, and the sqitch path runs through it.
 
 Nothing to migrate. `create extension pg_statecharts cascade` creates the
 `fsm` schema and everything in it. Statecharts then come from `.scxml` files
-through [pg_statecharts_dev](../pg_statecharts_dev), either imported directly
-or as generated sqitch migrations.
+through
+[pg_statecharts_dev](https://github.com/kronor-io/statecharts/tree/master/pg_statecharts_dev),
+either imported directly or as generated sqitch migrations.
 
 ### From 0.0.0, the Rust build
 

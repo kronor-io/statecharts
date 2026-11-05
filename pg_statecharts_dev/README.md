@@ -1,8 +1,9 @@
 # pg_statecharts_dev
 
-Development tooling for [pg_statecharts](../pg_statecharts): turns `.scxml`
-files into statecharts in the database, either directly or as sqitch
-migrations.
+Development tooling for
+[pg_statecharts](https://github.com/kronor-io/statecharts/tree/master/pg_statecharts):
+turns `.scxml` files into statecharts in the database, either directly or as
+sqitch migrations.
 
 This is deliberately a separate extension. Both of its functions read files
 from the database host, and one of them writes files too. That is fine on a
@@ -90,9 +91,10 @@ printf 'UID=%s\nGID=%s\nSQITCH_FULLNAME=%s\nSQITCH_EMAIL=%s\n' \
   "$(id -u)" "$(id -g)" "$(git config user.name)" "$(git config user.email)" > .env
 ```
 
-See [../example](../example) for a working setup. This replaces the old
-`file_permission_666` flag, which no longer exists, and the old habit of
-mounting `~/.sqitch` into the container.
+See [example/](https://github.com/kronor-io/statecharts/tree/master/example)
+for a working setup. This replaces the old `file_permission_666` flag, which
+no longer exists, and the old habit of mounting `~/.sqitch` into the
+container.
 
 ## fsm.import_scxml_files
 
