@@ -140,3 +140,127 @@ jobs:
           PGHOST: /tmp
           PGUSER: postgres
         run: .github/scripts/check_semver_coexistence.sh
+
+  # The PGXN archives are the one artifact nothing else checks: the debs are
+  # smoke tested in the release workflow and install.sh is covered above. They
+  # are also the artifact with no way back -- PGXN refuses to overwrite or
+  # delete a released version, so the only answer to a bad upload is to burn a
+  # version number. Cheaper to find out on the pull request.
+  pgxn:
+    name: PGXN archives
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    container: postgres:18
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get -qq update
+          apt-get -qq -y --no-install-recommends install make postgresql-server-dev-18 zip unzip
+
+      - name: Build the archives
+        run: |
+          make -C pg_statecharts dist
+          make -C pg_statecharts_dev dist
+
+      # PGXN wants a single directory named <distribution>-<version> with
+      # META.json at its root. Manager silently rewrites an archive that is
+      # shaped differently, so a mistake here is invisible until someone
+      # downloads the rewritten result.
+      - name: Check the layout PGXN expects
+        run: |
+          set -eu
+          for z in pg_statecharts/pg_statecharts-*.zip pg_statecharts_dev/pg_statecharts_dev-*.zip; do
+            roots=$(unzip -Z1 "$z" | cut -d/ -f1 | sort -u)
+            if [ "$(printf '%s\n' "$roots" | wc -l)" -ne 1 ]; then
+              echo "$z has more than one top level entry:" >&2
+              printf '%s\n' "$roots" >&2
+              exit 1
+            fi
+            unzip -Z1 "$z" | grep -qE '^[^/]+/META\.json$' \
+              || { echo "$z has no META.json at the root of $roots" >&2; exit 1; }
+            echo "$z: $roots, META.json at its root"
+          done
+
+      - name: Collect the archives
+        run: |
+          mkdir -p dist
+          cp pg_statecharts/pg_statecharts-*.zip pg_statecharts_dev/pg_statecharts_dev-*.zip dist/
+
+      - name: Pass the archives on to the install job
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgxn-archives
+          path: dist/*
+          if-no-files-found: error
+
+  # Deliberately does not check the repository out. Whatever is missing from an
+  # archive cannot be quietly supplied by a file that happens to be lying
+  # around, which is the whole question this job answers: can someone who has
+  # only the zip install and use the extension?
+  pgxn-install:
+    name: PGXN archives install clean
+    needs: pgxn
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    container: postgres:18
+
+    steps:
+      - name: Download the archives
+        uses: actions/download-artifact@v4
+        with:
+          name: pgxn-archives
+          path: /archives
+
+      - name: Install build tools
+        run: |
+          apt-get -qq update
+          apt-get -qq -y --no-install-recommends install make postgresql-server-dev-18 unzip
+
+      - name: Unpack
+        run: |
+          mkdir -p /pgxn
+          for z in /archives/*.zip; do unzip -q "$z" -d /pgxn; done
+          ls -1 /pgxn
+
+      - name: Start PostgreSQL
+        run: |
+          su postgres -c "/usr/lib/postgresql/18/bin/initdb -D /tmp/pgdata"
+          su postgres -c "/usr/lib/postgresql/18/bin/pg_ctl -D /tmp/pgdata -l /tmp/pg.log -o '-k /tmp' start"
+
+      # make && make install is what "pgxn install" runs.
+      - name: Install from the archives
+        run: |
+          set -eu
+          for d in /pgxn/*/; do
+            make -C "$d"
+            make -C "$d" install
+          done
+
+      - name: Create both extensions
+        run: |
+          su postgres -c "psql -h /tmp -v ON_ERROR_STOP=1 \
+            -c 'create extension pg_statecharts cascade' \
+            -c 'create extension pg_statecharts_dev'"
+
+      # The archives ship their own tests, so they can answer for themselves.
+      # This also exercises the dev extension reading and writing files on the
+      # database host, which is the part most likely to miss a shipped fixture.
+      - name: Run the tests the archives ship
+        run: |
+          set -eu
+          chown -R postgres /pgxn
+          for d in /pgxn/*/; do
+            su postgres -c "make -C $d installcheck PGHOST=/tmp PGUSER=postgres"
+          done
+
+      - name: Show diffs on failure
+        if: failure()
+        run: |
+          for f in /pgxn/*/test/regression.diffs; do
+            [ -f "$f" ] && { echo "=== $f ==="; cat "$f"; }
+          done
+          cat /tmp/pg.log || true
