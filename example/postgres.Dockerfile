@@ -1,36 +1,23 @@
 FROM postgres:18
 
-# sqitch to run the migrations, plus curl and jq to fetch the extension
-# packages from GitHub. That is the whole build environment: because
-# pg_statecharts is pure SQL there is no compiler, no PGXN client and no
-# server headers here. ltree is the only extension dependency and it ships
+# sqitch to run the migrations, plus the PGXN client to fetch the extensions
+# and make for it to build them with. PGXS already ships inside the server
+# image, and because pg_statecharts is pure SQL there is still no compiler and
+# no server headers here. ltree is the only extension dependency and it ships
 # with PostgreSQL itself.
 RUN apt-get -qq update \
-  && apt-get -qq --no-install-recommends install sqitch curl ca-certificates jq \
+  && apt-get -qq --no-install-recommends install sqitch pgxnclient make \
   && rm -rf /var/lib/apt/lists/*
 
-# Install both extensions from the latest GitHub release. The .deb packages are
-# named per PostgreSQL major version, because that is the only thing that
-# varies -- the files inside are architecture independent SQL -- so the major
-# version comes from pg_config rather than being hard coded to the FROM above.
+# Both extensions come from PGXN, which works out the latest stable release
+# itself. Nothing here is tied to a version or to a PostgreSQL major: the
+# distributions are pure SQL and the same files install on any server.
 #
-# pg-statecharts-dev is the half that reads and writes files on the database
-# host; it is here because this example generates migrations from .scxml files.
-# A production image would install pg-statecharts only.
+# The runtime goes first because pgxnclient does not follow the dependency
+# that pg_statecharts_dev declares in its META.json.
 #
-# dpkg -i rather than apt: the only dependencies are postgresql-18, already in
-# this image, and the runtime package, installed by the first pass of the loop.
-RUN set -eux; \
-  PG_VERSION=$(pg_config --version | sed -n 's/^PostgreSQL \([0-9]*\).*/\1/p'); \
-  for EXTENSION_NAME in pg-statecharts pg-statecharts-dev; do \
-    RELEASE_NAME_PATTERN="${EXTENSION_NAME}-${PG_VERSION}_"; \
-    JQ_QUERY='.assets[] | select(.name | startswith($PATTERN)) | .browser_download_url'; \
-    DOWNLOAD_URL=$(curl -sS https://api.github.com/repos/kronor-io/statecharts/releases/latest \
-      | jq -r --arg PATTERN "$RELEASE_NAME_PATTERN" "$JQ_QUERY"); \
-    [ -n "$DOWNLOAD_URL" ] || { \
-      echo "no ${RELEASE_NAME_PATTERN}*.deb in the latest release" >&2; exit 1; \
-    }; \
-    curl -fsSL -o /tmp/extension.deb "$DOWNLOAD_URL"; \
-    dpkg -i /tmp/extension.deb; \
-    rm /tmp/extension.deb; \
-  done
+# pg_statecharts_dev is the half that reads and writes files on the database
+# host; it is here because this example generates migrations from .scxml
+# files. A production image would install pg_statecharts only.
+RUN pgxn install pg_statecharts \
+  && pgxn install pg_statecharts_dev
