@@ -104,9 +104,15 @@ same files prepackaged:
 | `pg-statecharts-dev-<PG>_<version>.deb` | The dev tooling. Depends on the runtime package of the same version. |
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0.deb                             # production
-sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # development
+sudo dpkg -i pg-statecharts-18_0.2.0.deb                             # production
+sudo dpkg -i pg-statecharts-18_0.2.0.deb pg-statecharts-dev-18_0.2.0.deb  # development
 ```
+
+The two extensions are always released together and always carry the same
+version, so the supported combination is simply the two of them at the same
+version number; there is no compatibility table to consult. The Debian
+packages enforce it. `create extension` cannot, because an extension's
+`requires` lists names and never versions.
 
 Both extensions are published on [PGXN](https://pgxn.org) as well, so
 [pgxnclient](https://pgxn.github.io/pgxnclient/) can fetch, build and install
@@ -256,10 +262,12 @@ VALUES
 ### 2 — Create and start a machine
 
 Arguments are named throughout the examples below. Positional calls work just
-as well, but `shard => 1` reads better than a bare `1`. Note that the parameter
-names are not yet consistent between functions — the shard is `shard` here,
-`shard_id` on one function and `shid` on another — so copy them from the
-[Function Reference](#function-reference) rather than guessing.
+as well, but `machine_id => :machine_id` reads better than a bare id, and
+naming them is what makes an upgrade like 0.2.0 — which moved `shard_id` to the
+end of every signature — cost its callers nothing.
+
+`shard_id` is optional everywhere and defaults to `1`, so the examples leave it
+out. Pass it if your database is sharded.
 
 A *statechart* is a definition; a *state machine* is a running instance of that definition. You need both:
 
@@ -267,20 +275,19 @@ A *statechart* is a definition; a *state machine* is a running instance of that 
 -- Create the instance (does not enter any state yet)
 SELECT id AS machine_id
 FROM fsm.create_machine(
-    shard      => 1,   -- logical partition key; use your application's tenant/shard id
-    statechart => 1
+    statechart_id => 1,
+    shard_id      => 1   -- optional; logical partition key, defaults to 1
 ) \gset
 
 -- Start it: enters the initial state and fires on_entry callbacks
-SELECT fsm.start_machine(shard => 1, machine_id => :machine_id);
+SELECT fsm.start_machine(machine_id => :machine_id);
 ```
 
 Or use the convenience function that does both in one call with the latest chart version:
 
 ```sql
 SELECT fsm.start_machine_with_latest_statechart(
-    shard_id => 1,
-    named    => 'search_viewer'
+    statechart_name => 'search_viewer'
 );
 ```
 
@@ -292,17 +299,16 @@ SELECT fsm.start_machine_with_latest_statechart(
 
 ```sql
 SELECT fsm.notify_state_machine(
-    shard   => 1,
-    machine => :machine_id,
-    event   => 'search',
-    data    => '{"query": "cats"}'   -- jsonb, defaults to '{}'
+    machine_id => :machine_id,
+    event_name => 'search',
+    data       => '{"query": "cats"}'   -- jsonb, defaults to '{}'
 );
 ```
 
 **Process all pending events:**
 
 ```sql
-SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
+SELECT fsm.handle_machine_events(machine_id => :machine_id);
 ```
 
 `handle_machine_events` picks up every unhandled event in insertion order, looks up the matching transition for each currently active state, exits the source state tree (firing `on_exit` callbacks), enters the target state tree (firing `on_entry` callbacks), and records the new active states — all in a single PL/pgSQL loop.
@@ -310,11 +316,11 @@ SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
 Multiple events can be queued before calling `handle_machine_events`; they will be processed sequentially:
 
 ```sql
-SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'search',  data => '{"query": "cats"}');
-SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'results', data => '{"count": 42}');
-SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'zoom');
+SELECT fsm.notify_state_machine(machine_id => :machine_id, event_name => 'search',  data => '{"query": "cats"}');
+SELECT fsm.notify_state_machine(machine_id => :machine_id, event_name => 'results', data => '{"count": 42}');
+SELECT fsm.notify_state_machine(machine_id => :machine_id, event_name => 'zoom');
 
-SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
+SELECT fsm.handle_machine_events(machine_id => :machine_id);
 -- Machine is now in state 'zoomed_in'
 ```
 
@@ -335,14 +341,13 @@ WHERE shard_id        = 1
 **Check whether a specific state is active:**
 
 ```sql
--- note the abbreviated parameter names on this one
-SELECT fsm.is_state_active(shid => 1, smid => :machine_id, state => 'zoomed_in');
+SELECT fsm.is_state_active(machine_id => :machine_id, state_id => 'zoomed_in');
 ```
 
 **Check whether an event would trigger a transition:**
 
 ```sql
-SELECT fsm.is_valid_transition(shard => 1, machine_id => :machine_id, event_ => 'zoom_out');
+SELECT fsm.is_valid_transition(machine_id => :machine_id, event_name => 'zoom_out');
 ```
 
 ---
@@ -489,26 +494,31 @@ This means you never need to manually fire completion events — just define the
 ## Function Reference
 
 Parameter names are exactly as declared, so they can be used as named
-arguments. They are **not consistent between functions** — the shard is
-variously `shard`, `shard_id`, `shard_id_` and `shid`, and the machine is
-`machine`, `machine_id` or `smid`. Copy from here rather than guessing.
+arguments. `shard_id` is optional everywhere and defaults to `1`; arguments in
+square brackets have defaults.
 
 | Function | Description |
 |---|---|
-| `fsm.create_machine(shard, statechart)` | Creates a machine instance without starting it. Returns the new `fsm.state_machine` row. |
-| `fsm.start_machine(shard, machine_id [, initial_data])` | Enters the initial state(s) and fires their `on_entry` callbacks. |
-| `fsm.create_state_machine_with_latest_statechart(shard_id_, named)` | Creates a machine using the highest-versioned statechart with the given name. |
-| `fsm.start_machine_with_latest_statechart(shard_id, named [, initial_data])` | Creates **and** starts a machine with the latest chart version. |
-| `fsm.get_latest_statechart(named)` | Returns the `fsm.statechart` row with the highest version for that name. |
-| `fsm.notify_state_machine(shard, machine, event [, data])` | Queues an event for the machine. `data` defaults to `'{}'`. |
-| `fsm.handle_machine_events(shard, machine_id)` | Processes all pending events in order, executes transitions and callbacks. |
-| `fsm.is_state_active(shid, smid, state)` | Returns `true` if the machine is currently in the given state. |
-| `fsm.is_valid_transition(shard, machine_id, event_)` | Returns `true` if the event would trigger a transition from the current state. |
-| `fsm.get_initial_state(statechart)` | Returns the top-level initial state(s) of a statechart. |
+| `fsm.create_machine(statechart_id [, shard_id])` | Creates a machine instance without starting it. Returns the new `fsm.state_machine` row. |
+| `fsm.start_machine(machine_id [, initial_data] [, shard_id])` | Enters the initial state(s) and fires their `on_entry` callbacks. |
+| `fsm.create_state_machine_with_latest_statechart(statechart_name [, shard_id])` | Creates a machine using the highest-versioned statechart with the given name. |
+| `fsm.start_machine_with_latest_statechart(statechart_name [, initial_data] [, shard_id])` | Creates **and** starts a machine with the latest chart version. |
+| `fsm.get_latest_statechart(statechart_name)` | Returns the `fsm.statechart` row with the highest version for that name. |
+| `fsm.notify_state_machine(machine_id, event_name [, data] [, shard_id])` | Queues an event for the machine. `data` defaults to `'{}'`. |
+| `fsm.handle_machine_events(machine_id [, shard_id])` | Processes all pending events in order, executes transitions and callbacks. |
+| `fsm.is_state_active(machine_id, state_id [, shard_id])` | Returns `true` if the machine is currently in the given state. |
+| `fsm.is_valid_transition(machine_id, event_name [, shard_id])` | Returns `true` if the event would trigger a transition from the current state. |
+| `fsm.get_initial_state(statechart_id)` | Returns the top-level initial state(s) of a statechart. |
 | `fsm.to_semver(version)` | Parses a version string into `fsm.semver`, padding `1` and `1.2` out to `1.0.0` and `1.2.0`. |
 | `fsm.semver_text(version)` | Renders an `fsm.semver` as `1.10.0`. Casting to text instead gives the array form, `{1,10,0}`. |
 
 All functions live in the `fsm` schema.
+
+Every one of these also still accepts the names it used before 0.2.0 —
+`shard`, `shard_id_`, `shid`, `smid`, `machine`, `named`, `event`, `event_`,
+`state`, `statechart` — as deprecated parameters, so an application that names
+its arguments keeps working across the upgrade and can move over at its own
+pace. They are removed in 0.3.0.
 
 ---
 

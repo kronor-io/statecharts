@@ -1,15 +1,25 @@
-create or replace function fsm.get_finalized_parents(shard bigint, machine_id bigint, active_state_parent_path ltree)
+-- See fsm.create_machine for what the trailing deprecated parameters are for.
+-- shard_id and parent_path are qualified at every use because the tables this
+-- reads have columns of both names, and in a SQL function the column wins.
+create or replace function fsm.get_finalized_parents(
+    machine_id  bigint default null
+  , parent_path ltree  default null
+  , shard_id    bigint default 1
+  -- deprecated, removed in 0.3.0
+  , shard                    bigint default null
+  , active_state_parent_path ltree  default null
+)
   returns setof fsm.state as
 $$
   with all_parents as (
    select a_parent.*
    from fsm.state a_parent
    -- check that active_state_path is a child of a_parent
-   where a_parent.node_path @> active_state_parent_path
+   where a_parent.node_path @> coalesce(get_finalized_parents.parent_path, active_state_parent_path)
      and exists (
         select 1
         from fsm.state_machine_state current_state
-        where current_state.shard_id = shard
+        where current_state.shard_id = coalesce(shard, get_finalized_parents.shard_id)
           and current_state.state_machine_id = machine_id
           and current_state.exited_at is null -- the state is currently active
           and current_state.statechart_id = a_parent.statechart_id
@@ -25,7 +35,7 @@ $$
     select 1
     from fsm.state s
     join fsm.state_machine_state current_state
-      on  current_state.shard_id = shard
+      on  current_state.shard_id = coalesce(shard, get_finalized_parents.shard_id)
       and current_state.state_machine_id = machine_id
       and current_state.state_id = s.id
       and current_state.exited_at is null -- the state is currently active
@@ -49,7 +59,7 @@ $$
     select 1
     from fsm.state s -- the possible non-final, active state
     join fsm.state_machine_state current_state -- active parent state
-      on  current_state.shard_id = shard
+      on  current_state.shard_id = coalesce(shard, get_finalized_parents.shard_id)
       and current_state.state_machine_id = machine_id
       and current_state.state_id = s.id
       and current_state.exited_at is null
@@ -68,9 +78,12 @@ $$
         where s.node_path @> child.parent_path
       )
   )
-$$ language sql strict stable parallel safe;
+-- `strict` is gone because the deprecated names have to default to null to be
+-- omittable. Nothing replaces it: a null argument makes every comparison below
+-- null, so the function still returns no rows.
+$$ language sql stable parallel safe;
 
-comment on function fsm.get_finalized_parents (bigint, bigint, ltree) is
+comment on function fsm.get_finalized_parents (bigint, ltree, bigint, bigint, ltree) is
 $comment$
 A finalized parent can be defined as a compound state where all its children have reached
 a state where no other transitions are possible.

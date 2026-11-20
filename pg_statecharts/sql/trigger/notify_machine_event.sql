@@ -6,7 +6,9 @@ $$
 
     for event in select distinct shard_id, state_machine_id from new
     loop
-      perform fsm.handle_machine_events(event.shard_id, event.state_machine_id);
+      perform fsm.handle_machine_events(
+          machine_id => event.state_machine_id
+        , shard_id   => event.shard_id);
     end loop;
 
     return null;
