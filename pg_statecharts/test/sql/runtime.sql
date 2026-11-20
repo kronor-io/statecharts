@@ -67,21 +67,23 @@ delete from fsm.state where id = 'HasCapitals';
 select id, parent_id, parent_path::text ~ '^[0-9]+$' as parent_path_is_chart_id, node_path::text ~ '^[0-9]+\.' as node_path_prefixed
 from fsm.state order by id;
 
-select id as initial_state from fsm.get_initial_state((select id from fsm.get_latest_statechart('lightswitch_flow')));
+select id as initial_state from fsm.get_initial_state(
+  statechart_id => (select id from fsm.get_latest_statechart(statechart_name => 'lightswitch_flow')));
 
--- start a machine and drive it
+-- start a machine and drive it. shard_id defaults to 1, so it is left out:
+-- that default is the whole point of the 0.2.0 argument order.
 insert into lightswitch (state_machine_id)
-select s.id from fsm.create_state_machine_with_latest_statechart(1, 'lightswitch_flow') s;
+select s.id from fsm.create_state_machine_with_latest_statechart(statechart_name => 'lightswitch_flow') s;
 
 -- the returned row carries a timestamp, so only assert that it started
-select fsm.start_machine(1, state_machine_id) is not null as started from lightswitch;
+select fsm.start_machine(machine_id => state_machine_id) is not null as started from lightswitch;
 
 select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
 
-select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_on') from lightswitch;
+select fsm.notify_state_machine(machine_id => state_machine_id, event_name => 'lightswitch.turn_on') from lightswitch;
 select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
 
-select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_off') from lightswitch;
+select fsm.notify_state_machine(machine_id => state_machine_id, event_name => 'lightswitch.turn_off') from lightswitch;
 select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
 
 -- the currently active state is the only one without an exited_at
@@ -90,15 +92,64 @@ select state_id from fsm.state_machine_state where exited_at is null;
 -- is_state_active reads that same log, so a state the machine has entered and
 -- left again is not active. The machine went off -> on -> off, so 'on' is in
 -- the log twice over with an exited_at on both rows.
-select fsm.is_state_active(1, state_machine_id, 'off') as off_is_active,
-       fsm.is_state_active(1, state_machine_id, 'on') as on_is_active,
-       fsm.is_state_active(1, state_machine_id, 'never_entered') as unknown_is_active
+select fsm.is_state_active(machine_id => state_machine_id, state_id => 'off') as off_is_active,
+       fsm.is_state_active(machine_id => state_machine_id, state_id => 'on') as on_is_active,
+       fsm.is_state_active(machine_id => state_machine_id, state_id => 'never_entered') as unknown_is_active
 from lightswitch;
 
 -- the machine is in 'off', so turn_on is valid and turn_off is not
-select fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_on') as turn_on_valid,
-       fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_off') as turn_off_valid
+select fsm.is_valid_transition(machine_id => state_machine_id, event_name => 'lightswitch.turn_on') as turn_on_valid,
+       fsm.is_valid_transition(machine_id => state_machine_id, event_name => 'lightswitch.turn_off') as turn_off_valid
 from lightswitch;
+
+-- The names every argument carried before 0.2.0 still resolve, which is what
+-- lets a database be upgraded before the application that calls it is
+-- redeployed. Each of these is the pre-0.2.0 spelling of a call above.
+insert into lightswitch (state_machine_id)
+select s.id from fsm.create_state_machine_with_latest_statechart(shard_id_ => 1, named => 'lightswitch_flow') s;
+
+create temporary view newest as
+  select state_machine_id from lightswitch order by id desc limit 1;
+
+select fsm.start_machine(shard => 1, machine_id => state_machine_id) is not null as started
+from newest;
+
+select fsm.notify_state_machine(shard => 1, machine => state_machine_id, event => 'lightswitch.turn_on')
+from newest;
+
+select fsm.is_state_active(shid => 1, smid => state_machine_id, state => 'on') as on_is_active,
+       fsm.is_valid_transition(shard => 1, machine_id => state_machine_id, event_ => 'lightswitch.turn_off') as turn_off_valid
+from newest;
+
+select fsm.create_machine(
+         shard => 1,
+         statechart => (select id from fsm.get_latest_statechart(named => 'lightswitch_flow'))
+       ) is not null as created,
+       (select count(*) from fsm.get_initial_state(
+          statechart => (select id from fsm.get_latest_statechart(named => 'lightswitch_flow')))) as initial_states;
+
+-- The shard argument still reaches the row under either spelling. Getting the
+-- coalesce the wrong way round here would silently put every machine in the
+-- default shard, so both are asserted.
+select (fsm.create_machine(
+          statechart_id => (select id from fsm.get_latest_statechart(statechart_name => 'lightswitch_flow')),
+          shard_id => 2)).shard_id as new_name_shard,
+       (fsm.create_machine(
+          statechart => (select id from fsm.get_latest_statechart(named => 'lightswitch_flow')),
+          shard => 3)).shard_id as old_name_shard;
+
+-- start_machine_with_latest_statechart, under both spellings
+select count(*) as started_new_name
+from fsm.start_machine_with_latest_statechart(statechart_name => 'lightswitch_flow');
+select count(*) as started_old_name
+from fsm.start_machine_with_latest_statechart(shard_id => 1, named => 'lightswitch_flow');
+
+-- a name that matches no chart yields no rows, as it did when the function
+-- was strict
+select count(*) as no_such_chart
+from fsm.start_machine_with_latest_statechart(statechart_name => 'no_such_flow');
+
+drop view newest;
 
 -- pg_dump only includes an extension's tables when they are registered as
 -- configuration tables. Every table and sequence in fsm has to be, or a backup

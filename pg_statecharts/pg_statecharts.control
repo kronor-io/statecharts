@@ -1,5 +1,5 @@
 comment = 'Statecharts (hierarchical state machines) in PostgreSQL'
-default_version = '0.1.0'
+default_version = '0.2.0'
 relocatable = false
 superuser = false
 trusted = false

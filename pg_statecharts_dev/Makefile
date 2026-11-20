@@ -4,11 +4,18 @@ EXTENSION   = pg_statecharts_dev
 SQL_PARTS   = $(shell cat sql/parts.txt)
 EXTVERSION  = $(shell sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" $(EXTENSION).control)
 
-BUILT       = $(EXTENSION)--$(EXTVERSION).sql
-DATA        = $(BUILT)
-EXTRA_CLEAN = $(BUILT) $(DISTDIR) $(DIST)
+# Upgrade scripts are handwritten rather than generated
+UPGRADE_SCRIPTS = $(wildcard sql/upgrade/$(EXTENSION)--*.sql)
 
-all: $(BUILT)
+BUILT       = $(EXTENSION)--$(EXTVERSION).sql
+DATA        = $(BUILT) $(notdir $(UPGRADE_SCRIPTS))
+EXTRA_CLEAN = $(BUILT) $(notdir $(UPGRADE_SCRIPTS)) $(DISTDIR) $(DIST)
+
+all: $(BUILT) $(notdir $(UPGRADE_SCRIPTS))
+
+# PGXS wants DATA files next to the Makefile
+$(notdir $(UPGRADE_SCRIPTS)): $(UPGRADE_SCRIPTS)
+	cp sql/upgrade/$@ $@
 
 # printf rather than echo: sh's builtin echo eats the backslashes in \echo and \quit
 $(BUILT): $(SQL_PARTS)
