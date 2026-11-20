@@ -104,9 +104,15 @@ same files prepackaged:
 | `pg-statecharts-dev-<PG>_<version>.deb` | The dev tooling. Depends on the runtime package of the same version. |
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0.deb                             # production
-sudo dpkg -i pg-statecharts-18_0.1.0.deb pg-statecharts-dev-18_0.1.0.deb  # development
+sudo dpkg -i pg-statecharts-18_0.2.0.deb                             # production
+sudo dpkg -i pg-statecharts-18_0.2.0.deb pg-statecharts-dev-18_0.2.0.deb  # development
 ```
+
+The two extensions are always released together and always carry the same
+version, so the supported combination is simply the two of them at the same
+version number; there is no compatibility table to consult. The Debian
+packages enforce it. `create extension` cannot, because an extension's
+`requires` lists names and never versions.
 
 Both extensions are published on [PGXN](https://pgxn.org) as well, so
 [pgxnclient](https://pgxn.github.io/pgxnclient/) can fetch, build and install
