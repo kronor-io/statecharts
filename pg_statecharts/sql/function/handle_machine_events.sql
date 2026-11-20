@@ -15,14 +15,20 @@
 -- with nothing to do with each other kept aborting each other with 40001.
 -- handled_at is stamped by its column default instead; see
 -- sql/table/state_machine_event.sql.
+--
+-- New in 0.2.0, so unlike the two argument form below it carries no deprecated
+-- parameter names: nothing has ever called it by another spelling.
 create or replace function fsm.handle_machine_events(
-    shard bigint
-  , machine_id bigint
-  , events fsm.machine_event[]
+    machine_id bigint
+  , events     fsm.machine_event[]
+  , shard_id   bigint default 1
 )
   returns void as
 $$
   declare
+    -- Resolved once. Several queries below read a shard_id column, so a bare
+    -- shard_id would be ambiguous against the parameter of that name.
+    machine_shard bigint := handle_machine_events.shard_id;
     handled fsm.machine_event;
     state_transition record;
     on_exit_function_call record;
@@ -82,7 +88,7 @@ $$
             -- so, we filter by `exited_at is null` and correlate to the current
             -- state_child we are inspecting
             join fsm.state_machine_state as current_children_state
-              on current_children_state.shard_id = shard
+              on current_children_state.shard_id = machine_shard
               and current_children_state.state_machine_id = machine_id
               and current_children_state.state_id = state_child.id
               and current_children_state.exited_at is null
@@ -116,7 +122,7 @@ $$
           ) tt
         ) target_tree on true
 
-        where current_state.shard_id = shard
+        where current_state.shard_id = machine_shard
           and current_state.state_machine_id = machine_id
           and current_state.exited_at is null
       -- transition-query}}}
@@ -142,7 +148,7 @@ $$
             )
 
           , updated_states as (
-              update fsm.state_machine_state
+              update fsm.state_machine_state sms
               /* using clock_timestamp() instead of now(). now() uses
                * transaction time which can cause problem when another process
                * adds fsm.state_machine_state rows during the transaction. This
@@ -150,20 +156,20 @@ $$
                * time causing a constraint errors
                */
               set exited_at = clock_timestamp()
-              where shard_id = shard
-                and state_machine_id = machine_id
-                and state_id in (select a.id from source_states a)
+              where sms.shard_id = machine_shard
+                and sms.state_machine_id = machine_id
+                and sms.state_id in (select a.id from source_states a)
                 -- if we are looping into the same state, we don't want to mark the current state as exited
-                and state_id not in (select a.id from target_states a)
-                and exited_at is null
+                and sms.state_id not in (select a.id from target_states a)
+                and sms.exited_at is null
             )
 
-          select shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from source_states
+          select machine_shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from source_states
         loop
           execute format('select %I.%I(%L::fsm_event_payload)',
               coalesce((on_exit_function_call.on_exit).schema_name, 'public')
             , (on_exit_function_call.on_exit).function_name
-            , ( shard
+            , ( machine_shard
               , machine_id
               , handled.name
               , handled.data
@@ -196,7 +202,7 @@ $$
           , new_states as (
               insert into fsm.state_machine_state (shard_id, state_machine_id, statechart_id, state_id)
               select
-                  shard as shard_id
+                  machine_shard as shard_id
                 , machine_id as state_machine_id
                 , a.statechart_id
                 , a.id as state_id
@@ -209,12 +215,12 @@ $$
               )
             )
 
-          select shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from target_states
+          select machine_shard, machine_id, machine_id, id, unnest(on_entry) as on_entry from target_states
         loop
           execute format('select %I.%I(%L::fsm_event_payload)',
               coalesce((on_entry_function_call.on_entry).schema_name, 'public')
             , (on_entry_function_call.on_entry).function_name
-            , ( shard
+            , ( machine_shard
               , machine_id
               , handled.name
               , handled.data
@@ -231,20 +237,20 @@ $$
         if state_transition.target_is_final
         then
           insert into fsm.state_machine_event (shard_id, state_machine_id, name, data) values
-            ( shard
+            ( machine_shard
             , machine_id
             , format('done.state.%s', (state_transition.target_state).id)
             , handled.data
             );
 
           insert into fsm.state_machine_event (shard_id, state_machine_id, name, data)
-            select shard as shard_id, machine_id as state_machine_id
+            select machine_shard as shard_id, machine_id as state_machine_id
                  , format('done.state.%s', f.id)
                  , handled.data as data
             from fsm.get_finalized_parents(
-                shard
-              , machine_id
-              , (state_transition.target_state).parent_path
+                machine_id  => handle_machine_events.machine_id
+              , parent_path => (state_transition.target_state).parent_path
+              , shard_id    => machine_shard
             ) f;
         end if;
         -- event-generation}}}
@@ -257,41 +263,55 @@ $$
   end;
 $$ language plpgsql volatile strict;
 
--- The queue-reading form: looks up whatever is still unhandled for the
--- machine, marks it, and hands it to the function above.
+-- The queue-reading form, and the one 0.1.0 shipped. It looks up whatever is
+-- still unhandled for the machine, marks it, and hands it to the function
+-- above. See fsm.create_machine for what the trailing deprecated parameter is
+-- for.
 --
 -- Events sent with fsm.notify_state_machine are already handled by the time it
 -- returns, because the insert fires notify_machine_event. This form is for
 -- events inserted with that trigger disabled, which have to set handled_at to
 -- null explicitly now that the column defaults to now().
-create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
+create or replace function fsm.handle_machine_events(
+    machine_id bigint default null
+  , shard_id   bigint default 1
+  -- deprecated, removed in 0.3.0
+  , shard      bigint default null
+)
   returns void as
 $$
   declare
+    machine_shard bigint := coalesce(shard, handle_machine_events.shard_id);
     events_ fsm.machine_event[];
   begin
     with unhandled as (
         select *
-        from fsm.state_machine_event
-        where shard_id = shard
-          and state_machine_id = machine_id
-          and handled_at is null
+        from fsm.state_machine_event e
+        where e.shard_id = machine_shard
+          and e.state_machine_id = machine_id
+          and e.handled_at is null
       )
     , handling as (
-        update fsm.state_machine_event set handled_at = now()
-        where (shard_id, id) in (select shard_id, id from unhandled)
+        update fsm.state_machine_event ev set handled_at = now()
+        where (ev.shard_id, ev.id) in (select u.shard_id, u.id from unhandled u)
       )
     select array_agg(
-        (shard_id, id, state_machine_id, created_at, name, data)::fsm.machine_event
-        order by created_at, id
+        (u.shard_id, u.id, u.state_machine_id, u.created_at, u.name, u.data)::fsm.machine_event
+        order by u.created_at, u.id
     )
     into events_
-    from unhandled;
+    from unhandled u;
 
     if events_ is not null then
-      perform fsm.handle_machine_events(shard, machine_id, events_);
+      perform fsm.handle_machine_events(
+          machine_id => machine_id
+        , events     => events_
+        , shard_id   => machine_shard);
     end if;
 
     return;
   end;
-$$ language plpgsql volatile strict;
+-- `strict` is gone because the deprecated name has to default to null to be
+-- omittable. Nothing replaces it: a null argument matches no events, so the
+-- function still does nothing.
+$$ language plpgsql volatile;

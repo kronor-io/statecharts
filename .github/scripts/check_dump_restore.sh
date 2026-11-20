@@ -65,11 +65,11 @@ begin
 end $$;
 
 insert into lightswitch (state_machine_id)
-select id from fsm.create_state_machine_with_latest_statechart(1, 'lightswitch_flow');
+select id from fsm.create_state_machine_with_latest_statechart(statechart_name => 'lightswitch_flow');
 
-select fsm.start_machine(1, state_machine_id) from lightswitch;
-select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_on') from lightswitch;
-select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_off') from lightswitch;
+select fsm.start_machine(machine_id => state_machine_id) from lightswitch;
+select fsm.notify_state_machine(machine_id => state_machine_id, event_name => 'lightswitch.turn_on') from lightswitch;
+select fsm.notify_state_machine(machine_id => state_machine_id, event_name => 'lightswitch.turn_off') from lightswitch;
 SQL
 
 # Everything that has to survive the round trip, in a stable order. The
@@ -192,10 +192,10 @@ echo "--- the restored machines keep working and new ones get fresh ids ---"
 # under 0.0.0.
 $PSQL -d dump_restored <<'SQL'
 insert into lightswitch (state_machine_id)
-select id from fsm.create_state_machine_with_latest_statechart(1, 'lightswitch_flow');
+select id from fsm.create_state_machine_with_latest_statechart(statechart_name => 'lightswitch_flow');
 
-select fsm.start_machine(1, state_machine_id) from lightswitch where turned_off_at is null;
-select fsm.notify_state_machine(1, state_machine_id, 'lightswitch.turn_on') from lightswitch;
+select fsm.start_machine(machine_id => state_machine_id) from lightswitch where turned_off_at is null;
+select fsm.notify_state_machine(machine_id => state_machine_id, event_name => 'lightswitch.turn_on') from lightswitch;
 
 do $check$
 declare

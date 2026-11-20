@@ -33,8 +33,7 @@ BEGIN;
           then
               select s.id into new.state_machine_id
               from fsm.create_state_machine_with_latest_statechart(
-                  shard_id_ => 1,
-                  named => 'lightswitch_flow'
+                  statechart_name => 'lightswitch_flow'
               ) s;
           end if;
           return new;
@@ -56,7 +55,6 @@ BEGIN;
       begin
 
           perform fsm.start_machine(
-              shard => 1,
               machine_id => new.state_machine_id
           )
           from lightswitch
