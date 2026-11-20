@@ -87,6 +87,14 @@ select turned_on_at is not null as is_on, turned_off_at is not null as is_off fr
 -- the currently active state is the only one without an exited_at
 select state_id from fsm.state_machine_state where exited_at is null;
 
+-- is_state_active reads that same log, so a state the machine has entered and
+-- left again is not active. The machine went off -> on -> off, so 'on' is in
+-- the log twice over with an exited_at on both rows.
+select fsm.is_state_active(1, state_machine_id, 'off') as off_is_active,
+       fsm.is_state_active(1, state_machine_id, 'on') as on_is_active,
+       fsm.is_state_active(1, state_machine_id, 'never_entered') as unknown_is_active
+from lightswitch;
+
 -- the machine is in 'off', so turn_on is valid and turn_off is not
 select fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_on') as turn_on_valid,
        fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_off') as turn_off_valid
