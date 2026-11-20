@@ -2,6 +2,7 @@ sql/schema.sql
 sql/type/semver.sql
 sql/type/fsm_event_payload.sql
 sql/type/fsm_callback_name.sql
+sql/type/machine_event.sql
 sql/table/statechart.sql
 sql/table/state.sql
 sql/table/transition.sql

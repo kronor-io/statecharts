@@ -100,6 +100,43 @@ select fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_on') as tu
        fsm.is_valid_transition(1, state_machine_id, 'lightswitch.turn_off') as turn_off_valid
 from lightswitch;
 
+-- Nothing marks events handled after the fact any more: the statement that
+-- inserts an event hands it straight to handle_machine_events, and handled_at
+-- is stamped by its column default. So nothing is ever left unhandled behind
+-- the trigger.
+select count(*) filter (where handled_at is null) as still_unhandled
+from fsm.state_machine_event;
+
+-- One statement inserting several events fires the trigger once, with all of
+-- them in its transition table, so they are handled together in insertion
+-- order. The machine is in 'off', and these take it off -> on -> off.
+insert into fsm.state_machine_event (shard_id, state_machine_id, name, data)
+select 1, state_machine_id, e.name, '{}'::jsonb
+from lightswitch, (values ('lightswitch.turn_on'), ('lightswitch.turn_off')) as e(name);
+
+select turned_on_at is not null as is_on, turned_off_at is not null as is_off from lightswitch;
+select state_id as active_after_batch from fsm.state_machine_state where exited_at is null;
+
+-- The three argument form handles exactly the events it is handed, with no
+-- lookup at all: this one is never inserted into the queue.
+select fsm.handle_machine_events(
+    1
+  , state_machine_id
+  , array[(1, 0, state_machine_id, now(), 'lightswitch.turn_on', '{}')::fsm.machine_event]
+) from lightswitch;
+select turned_on_at is not null as is_on_after_direct_call from lightswitch;
+
+-- With the trigger disabled nothing hands the events over, so they go in
+-- unhandled -- handled_at has to be given explicitly, against the default --
+-- and the two argument form picks them up.
+alter table fsm.state_machine_event disable trigger notify_machine_event;
+insert into fsm.state_machine_event (shard_id, state_machine_id, handled_at, name, data)
+select 1, state_machine_id, null, 'lightswitch.turn_off', '{}' from lightswitch;
+select turned_off_at is not null as is_off_before_handling from lightswitch;
+select fsm.handle_machine_events(1, state_machine_id) from lightswitch;
+select turned_off_at is not null as is_off_after_handling from lightswitch;
+alter table fsm.state_machine_event enable trigger notify_machine_event;
+
 -- pg_dump only includes an extension's tables when they are registered as
 -- configuration tables. Every table and sequence in fsm has to be, or a backup
 -- silently loses the machines while keeping the application rows that point at
