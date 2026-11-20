@@ -140,6 +140,10 @@
           shellHook = ''
             ${self.checks.${system}.pre-commit-check.shellHook}
           '';
+
+          nativeBuildInputs = [
+            self.checks.${system}.pre-commit-check.enabledPackages
+          ];
         };
 
       in
@@ -150,6 +154,7 @@
             hooks = {
               nixpkgs-fmt.enable = true;
               fourmolu.enable = true;
+              zizmor.enable = true;
             };
           };
         };
