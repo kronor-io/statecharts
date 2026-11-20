@@ -31,7 +31,7 @@ On Debian and Ubuntu there is a package per PostgreSQL major version on the
 contains only this extension, so it is the one to put on production servers:
 
 ```bash
-sudo dpkg -i pg-statecharts-18_0.1.0.deb
+sudo dpkg -i pg-statecharts-18_0.2.0.deb
 ```
 
 The releases also carry a tarball with both extensions, whose top-level
@@ -104,8 +104,9 @@ that only makes sense on a development database.
 ## Migrating to 0.1.0
 
 There are three places a database can be starting from, and the ending point
-is the same for all of them: the extension at 0.1.0, with the version column
-on the built-in `fsm.semver` domain and the `semver` extension gone.
+is the same for all of them: the extension at its current version, with the
+version column on the built-in `fsm.semver` domain and the `semver` extension
+gone.
 
 | Starting point | What to run |
 |---|---|
@@ -190,10 +191,11 @@ $migrate$;
 ```
 
 This is one change that works from all three starting points. On a legacy
-database it adopts and upgrades. On a fresh one it installs 0.1.0 and the
-update is a no-op. On a 0.0.0 install it upgrades. Running it again does
-nothing. CI runs this exact block against a sqitch deployment and against an
-empty database, twice each, and checks both end up owning the same objects.
+database it adopts and upgrades. On a fresh one it installs the current
+version and the update is a no-op. On a 0.0.0 install it upgrades. Running it
+again does nothing. CI runs this exact block against a sqitch deployment and
+against an empty database, twice each, and checks both end up owning the same
+objects.
 
 Two things change for the project that owns the database:
 
