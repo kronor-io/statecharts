@@ -1,39 +1,42 @@
-create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
+-- Handles `events`, all of them for this machine, in the order given.
+--
+-- They are passed in rather than looked up because the trigger that calls this
+-- already has them. notify_machine_event fires at the end of every statement
+-- that inserts an event, including an insert made from inside a transition
+-- callback, so the rows in its transition table are exactly the machine's
+-- unhandled events. Not looking them up again keeps the event table
+-- write-only on this path.
+--
+-- That matters under serializable. Looking the events up and then marking them
+-- handled put a read lock and a fresh index entry on the same few pages in
+-- every concurrent transaction: the update could never be HOT, because
+-- idx_state_machine names handled_at, so every event added an entry on the
+-- right edge of the index that every other transaction had just read. Machines
+-- with nothing to do with each other kept aborting each other with 40001.
+-- handled_at is stamped by its column default instead; see
+-- sql/table/state_machine_event.sql.
+create or replace function fsm.handle_machine_events(
+    shard bigint
+  , machine_id bigint
+  , events fsm.machine_event[]
+)
   returns void as
 $$
   declare
-    handled fsm.state_machine_event%rowtype;
+    handled fsm.machine_event;
     state_transition record;
     on_exit_function_call record;
     on_entry_function_call record;
   begin
 
-    -- First mark all pending events as handled and then select the set of source
-    -- active states and future target states based on the event transition. This
-    -- selection will be used to perform the transition effects and record the new
-    -- machine current states.
-
-    -- regardless of whether or not there exists a valid transition for the
-    -- unhandled events, we need to mark them as handled. This is why we start
-    -- the process with the update.
-
-    -- The reason for using a select and then an update, instead of just issuing a plain
-    -- update with conditions is that we want access to the list of events in creation order
-    -- rather than the order that postgres found most convenient.
+    -- For each event, select the set of source active states and future target
+    -- states based on the event transition. This selection will be used to
+    -- perform the transition effects and record the new machine current states.
+    -- An event with no valid transition is simply dropped.
     for handled in
-        with unhandled as (
-          select *
-          from fsm.state_machine_event
-          where shard_id = shard
-            and state_machine_id = machine_id
-            and handled_at is null
-          order by created_at, id asc
-        )
-        , handling as (
-          update fsm.state_machine_event set handled_at = now()
-          where (shard_id, id) in (select shard_id, id from unhandled)
-        )
-        select * from unhandled
+        select *
+        from unnest(events)
+        order by created_at, id
     loop
       for state_transition in
 
@@ -249,6 +252,45 @@ $$
       end loop;
 
     end loop;
+
+    return;
+  end;
+$$ language plpgsql volatile strict;
+
+-- The queue-reading form: looks up whatever is still unhandled for the
+-- machine, marks it, and hands it to the function above.
+--
+-- Events sent with fsm.notify_state_machine are already handled by the time it
+-- returns, because the insert fires notify_machine_event. This form is for
+-- events inserted with that trigger disabled, which have to set handled_at to
+-- null explicitly now that the column defaults to now().
+create or replace function fsm.handle_machine_events(shard bigint, machine_id bigint)
+  returns void as
+$$
+  declare
+    events_ fsm.machine_event[];
+  begin
+    with unhandled as (
+        select *
+        from fsm.state_machine_event
+        where shard_id = shard
+          and state_machine_id = machine_id
+          and handled_at is null
+      )
+    , handling as (
+        update fsm.state_machine_event set handled_at = now()
+        where (shard_id, id) in (select shard_id, id from unhandled)
+      )
+    select array_agg(
+        (shard_id, id, state_machine_id, created_at, name, data)::fsm.machine_event
+        order by created_at, id
+    )
+    into events_
+    from unhandled;
+
+    if events_ is not null then
+      perform fsm.handle_machine_events(shard, machine_id, events_);
+    end if;
 
     return;
   end;
