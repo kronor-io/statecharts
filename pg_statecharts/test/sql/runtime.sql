@@ -191,6 +191,50 @@ from fsm.start_machine_with_latest_statechart(shard_id => 1, named => 'lightswit
 select count(*) as no_such_chart
 from fsm.start_machine_with_latest_statechart(statechart_name => 'no_such_flow');
 
+-- The opposite case. Above, a null id legitimately means "no chart matched".
+-- Here a real id names no machine, which is always a mistake: there is
+-- nothing to start, and returning null used to hide it until some unrelated
+-- call failed much later.
+do $$
+declare
+  failed boolean := false;
+begin
+  begin
+    perform fsm.start_machine(machine_id => 999999);
+  exception when raise_exception then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'starting a machine that does not exist should have raised';
+  end if;
+  raise notice 'starting an unknown machine raises';
+end $$;
+
+-- The usual way to meet that: created under one shard, started under another.
+do $$
+declare
+  elsewhere bigint;
+  failed boolean := false;
+begin
+  select id into elsewhere
+  from fsm.create_state_machine_with_latest_statechart(
+      statechart_name => 'lightswitch_flow'
+    , shard_id        => 7);
+
+  begin
+    perform fsm.start_machine(machine_id => elsewhere);
+  exception when raise_exception then
+    failed := true;
+  end;
+  if not failed then
+    raise exception 'starting a machine from the wrong shard should have raised';
+  end if;
+
+  -- and under the shard it was created in it still starts
+  perform fsm.start_machine(machine_id => elsewhere, shard_id => 7);
+  raise notice 'the wrong shard raises, the right one starts';
+end $$;
+
 drop view newest;
 
 -- pg_dump only includes an extension's tables when they are registered as

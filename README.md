@@ -502,7 +502,7 @@ square brackets have defaults.
 | Function | Description |
 |---|---|
 | `fsm.create_machine(statechart_id [, shard_id])` | Creates a machine instance without starting it. Returns the new `fsm.state_machine` row. |
-| `fsm.start_machine(machine_id [, initial_data] [, shard_id])` | Enters the initial state(s) and fires their `on_entry` callbacks. |
+| `fsm.start_machine(machine_id [, initial_data] [, shard_id])` | Enters the initial state(s) and fires their `on_entry` callbacks. Raises if no such machine exists under that shard. |
 | `fsm.create_state_machine_with_latest_statechart(statechart_name [, shard_id])` | Creates a machine using the highest-versioned statechart with the given name. |
 | `fsm.start_machine_with_latest_statechart(statechart_name [, initial_data] [, shard_id])` | Creates **and** starts a machine with the latest chart version. |
 | `fsm.get_latest_statechart(statechart_name)` | Returns the `fsm.statechart` row with the highest version for that name. |

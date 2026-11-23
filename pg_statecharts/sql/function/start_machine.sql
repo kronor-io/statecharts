@@ -1,6 +1,14 @@
 -- See fsm.create_machine for what the trailing deprecated parameter is for.
--- This function was never strict, so a machine that does not exist still
--- returns null rather than raising, as it did before 0.2.0.
+--
+-- A null machine_id returns null, standing in for the `strict` this function
+-- never had. start_machine_with_latest_statechart depends on that: a chart
+-- name matching nothing yields a null id, which has to come back as no rows.
+--
+-- A machine_id that names no machine is a different case and raises. There is
+-- nothing to start, so returning null left the machine simply never running,
+-- and the first complaint came from some unrelated call much later -- usually
+-- a foreign key violation from notify_state_machine, pointing at the symptom
+-- rather than at the call that was wrong.
 create or replace function fsm.start_machine(
     machine_id   bigint default null
   , initial_data jsonb  default '{}'
@@ -24,6 +32,14 @@ create or replace function fsm.start_machine(
     begin
 
       select * into machine from fsm.state_machine sm where sm.shard_id = machine_shard and sm.id = start_machine.machine_id;
+
+      if start_machine.machine_id is not null and machine.id is null then
+        raise exception 'no state machine % exists in shard %'
+            , start_machine.machine_id, machine_shard
+          using detail = 'A machine has to be created before it can be started.'
+                         ' A machine created under a different shard_id has to'
+                         ' be started under that same shard_id.';
+      end if;
 
       for initial in select * from fsm.get_initial_state(statechart_id => machine.statechart_id)
       loop
