@@ -9,77 +9,10 @@ set -eu
 
 cd "$(dirname "$0")/../.."
 
+. .github/scripts/lib/compare_extension.sh
+
 PSQL="psql -v ON_ERROR_STOP=1 -X -q"
 VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" pg_statecharts/pg_statecharts.control)
-
-members() {
-  # Every object the extension owns, described the same way in any database.
-  $PSQL -tA -d "$1" -c "
-    select pg_describe_object(classid, objid, objsubid)
-    from pg_depend
-    where refclassid = 'pg_extension'::regclass
-      and refobjid = (select oid from pg_extension where extname = 'pg_statecharts')
-      and deptype = 'e'
-    order by 1"
-}
-
-definitions() {
-  # The same objects, but their structure rather than their names. members()
-  # only proves the adoption found everything; it would not notice a column
-  # left on the old type, a constraint that never got recreated, or an index
-  # or trigger with a different definition. pg_dump is no help here, because
-  # it deliberately omits extension members.
-  #
-  # Function bodies are deliberately left out. Adoption is
-  # ALTER EXTENSION ... ADD: it takes ownership of the bodies sqitch deployed
-  # rather than rewriting them, so they differ from a fresh install's in
-  # indentation throughout while being the same code. Comparing them would
-  # mean normalising whitespace until the comparison said nothing.
-  $PSQL -tA -d "$1" -c "
-    with members as (
-      select classid, objid
-      from pg_depend
-      where refclassid = 'pg_extension'::regclass
-        and refobjid = (select oid from pg_extension where extname = 'pg_statecharts')
-        and deptype = 'e'
-    ),
-    tables as (select objid from members where classid = 'pg_class'::regclass),
-    types as (select objid from members where classid = 'pg_type'::regclass)
-    select def from (
-      select pg_describe_object('pg_class'::regclass, a.attrelid, a.attnum)
-             || ' :: ' || format_type(a.atttypid, a.atttypmod)
-             || case when a.attnotnull then ' not null' else '' end
-             || coalesce(' default ' || pg_get_expr(d.adbin, d.adrelid), '') as def
-      from pg_attribute a
-      join tables t on t.objid = a.attrelid
-      left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
-      where a.attnum > 0 and not a.attisdropped
-
-      union all
-
-      select pg_describe_object('pg_constraint'::regclass, c.oid, 0)
-             || ' :: ' || pg_get_constraintdef(c.oid)
-      from pg_constraint c
-      where c.conrelid in (select objid from tables)
-         or c.contypid in (select objid from types)
-
-      union all
-
-      select pg_describe_object('pg_class'::regclass, i.indexrelid, 0)
-             || ' :: ' || pg_get_indexdef(i.indexrelid)
-      from pg_index i
-      where i.indrelid in (select objid from tables)
-
-      union all
-
-      select pg_describe_object('pg_trigger'::regclass, tg.oid, 0)
-             || ' :: ' || pg_get_triggerdef(tg.oid)
-      from pg_trigger tg
-      where tg.tgrelid in (select objid from tables)
-        and not tg.tgisinternal
-    ) d
-    order by 1"
-}
 
 echo "--- deploying the sqitch schema with data ---"
 $PSQL -c "drop database if exists adopt_check"
@@ -281,19 +214,15 @@ if [ "$($PSQL -tA -d adopt_onego -c "select fsm.semver_text(version) from fsm.st
 fi
 
 echo "--- comparing with a fresh install ---"
+# Function bodies are compared ignoring whitespace, and only here. Adoption is
+# ALTER EXTENSION ... ADD: it takes ownership of the bodies sqitch deployed
+# rather than rewriting them, and the ones no upgrade script has had reason to
+# replace are indented differently throughout while being the same code.
+# Anything that survives that comparison is a real difference in what the two
+# databases run. See .github/scripts/lib/compare_extension.sh.
 for adopted in adopt_check adopt_onego; do
-  if ! diff <(members adopt_fresh) <(members "$adopted"); then
-    echo "error: $adopted does not own the same objects as a fresh install" >&2
-    echo "(< fresh install, > adopted)" >&2
-    exit 1
-  fi
-  if ! diff <(definitions adopt_fresh) <(definitions "$adopted"); then
-    echo "error: $adopted has the same objects as a fresh install but not the same definitions" >&2
-    echo "(< fresh install, > adopted)" >&2
-    exit 1
-  fi
+  compare_extension adopt_fresh "$adopted" "$adopted" ignoring-whitespace
 done
-echo "the adopted extensions own exactly what a fresh install does, with the same definitions"
 
 echo "--- checking sqitch can no longer drop what the extension owns ---"
 # Reverting this far first undoes the two handle_machine_events reworks, whose

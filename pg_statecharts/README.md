@@ -359,7 +359,20 @@ and both `make` and `install.sh` read that list to assemble the single
 new object by adding its file and putting it in the right place in
 `parts.txt`.
 
-`sql/upgrade/` holds handwritten `--<from>--<to>.sql` scripts.
+`sql/upgrade/` holds handwritten `--<from>--<to>.sql` scripts. They carry their
+own copies of the function bodies in `sql/`, so changing a function means
+changing it in two places: its own file, and the upgrade script for the release
+that ships the change. A comment-only edit counts, because an upgraded database
+that does not get it is no longer the same database as a fresh install.
+
+That is the invariant, and
+[`.github/scripts/check_upgrade_matches_fresh.sh`](../.github/scripts/check_upgrade_matches_fresh.sh)
+enforces it: it installs each tagged release, runs the upgrade path over it,
+and compares the result against `CREATE EXTENSION` object by object, body by
+body. `check_sqitch_adoption.sh` makes the same comparison for a database
+adopted out of the sqitch deployment, ignoring whitespace in bodies and
+comments there because adoption keeps the text sqitch deployed rather than
+rewriting it.
 
 ## Tests
 

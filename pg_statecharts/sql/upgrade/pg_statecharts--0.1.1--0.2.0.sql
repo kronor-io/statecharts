@@ -955,3 +955,56 @@ $$ language plpgsql;
 comment on function fsm.trig_notify_machine_event is $comment$
   Handles all of the newly inserted events for all affected state machines.
 $comment$;
+
+-- sql/type/semver.sql, fsm.to_semver only.
+--
+-- Nothing about this function changes in 0.2.0. What differs is a comment
+-- inside its body, reworded while the extension was being lifted out of the
+-- sqitch deployment and never carried into an upgrade script, so a database
+-- adopted out of sqitch still runs the older text.
+--
+-- Replaced here because the comparison in
+-- .github/scripts/lib/compare_extension.sh holds every route to a release to
+-- the same bodies, and an exception made for this one -- it is only a
+-- comment, after all -- is the exception the next real difference hides
+-- behind.
+create or replace function fsm.to_semver(version text)
+returns fsm.semver as
+$$
+  declare
+    dot_count integer;
+    padded text;
+  begin
+    if version is null then
+      return null;
+    end if;
+
+    dot_count := length(version) - length(replace(version, '.', ''));
+
+    if dot_count > 2 then
+      raise exception 'invalid version %', quote_literal(version)
+        using hint = 'expected at most three components, e.g. 1.2.3';
+    end if;
+
+    -- pads with '.0' if the provided value has fewer than two dots, so that
+    -- both '1' and '1.2' are accepted and normalised to 1.0.0 and 1.2.0
+    padded := version || repeat('.0', 2 - dot_count);
+
+    if padded !~ '^\d+\.\d+\.\d+$' then
+      raise exception 'invalid version %', quote_literal(version)
+        using hint = 'expected digits separated by dots, e.g. 1.2.3';
+    end if;
+
+    return string_to_array(padded, '.')::integer[]::fsm.semver;
+  end;
+$$ language plpgsql immutable parallel safe;
+
+-- sql/type/fsm_event_payload.sql, the comment only. The type is unchanged.
+--
+-- The sqitch deployment never carried this comment, so a database adopted out
+-- of it has an undocumented fsm_event_payload in \dT+ while a fresh install
+-- documents it. Same reasoning as fsm.to_semver above: every route to a
+-- release ends at the same place, or the comparison that says so stops
+-- meaning anything.
+comment on type fsm_event_payload is
+    'The argument passed to every on_entry and on_exit callback function.';

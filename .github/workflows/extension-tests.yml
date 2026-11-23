@@ -86,19 +86,29 @@ jobs:
           cat /tmp/pg.log || true
 
   upgrade:
-    name: upgrade from sqitch
+    name: upgrade paths
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     container: postgres:18
 
     steps:
+      # Before the checkout, deliberately. actions/checkout downloads a
+      # tarball when git is missing, and a tarball has no tags: the upgrade
+      # check installs the older releases from theirs.
+      - name: Install git
+        run: |
+          apt-get -qq update
+          apt-get -qq -y --no-install-recommends install git ca-certificates
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Whole history, for the same reason.
+          fetch-depth: 0
 
       - name: Install build tools
         run: |
-          apt-get -qq update
-          apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient ca-certificates sqitch
+          apt-get -qq -y --no-install-recommends install make gcc postgresql-server-dev-18 pgxnclient sqitch
 
       # The sqitch deployment used the semver extension, so the upgrade path
       # can only be exercised with it present.
@@ -132,6 +142,16 @@ jobs:
           PGHOST: /tmp
           PGUSER: postgres
         run: .github/scripts/check_sqitch_adoption.sh
+
+      # The upgrade scripts are handwritten and hold their own copies of the
+      # function bodies. Two databases at the same version, one installed and
+      # one upgraded, have to be the same database; nothing compared them
+      # until this.
+      - name: Check an upgraded database matches a fresh install
+        env:
+          PGHOST: /tmp
+          PGUSER: postgres
+        run: .github/scripts/check_upgrade_matches_fresh.sh
 
       # Nothing of ours is called to_semver in the same schema as semver's own,
       # so the two extensions can now be installed side by side.
