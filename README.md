@@ -299,24 +299,29 @@ SELECT fsm.notify_state_machine(
 );
 ```
 
-**Process all pending events:**
+There is no second step: the event is handled by the statement that inserts it. `fsm.notify_state_machine` returns with the transition already made, the `on_exit` and `on_entry` callbacks already run and the new active states already recorded.
 
-```sql
-SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
-```
+That happens through `notify_machine_event`, an `AFTER INSERT ... FOR EACH STATEMENT` trigger on `fsm.state_machine_event`. It hands the rows it was given to `fsm.handle_machine_events`, which looks up the matching transition for each currently active state, exits the source state tree, enters the target state tree, and records the new active states — all in a single PL/pgSQL loop. Events generated along the way, such as the `done.state.X` of a final state, are inserted in the same way and handled the same way.
 
-`handle_machine_events` picks up every unhandled event in insertion order, looks up the matching transition for each currently active state, exits the source state tree (firing `on_exit` callbacks), enters the target state tree (firing `on_entry` callbacks), and records the new active states — all in a single PL/pgSQL loop.
-
-Multiple events can be queued before calling `handle_machine_events`; they will be processed sequentially:
+So three events sent one after another are three transitions, each complete before the next statement runs:
 
 ```sql
 SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'search',  data => '{"query": "cats"}');
 SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'results', data => '{"count": 42}');
 SELECT fsm.notify_state_machine(shard => 1, machine => :machine_id, event => 'zoom');
-
-SELECT fsm.handle_machine_events(shard => 1, machine_id => :machine_id);
 -- Machine is now in state 'zoomed_in'
 ```
+
+**Handling several events as one batch:** a single statement that inserts several events fires the trigger once, with all of them in its transition table, and they are handled together in insertion order:
+
+```sql
+INSERT INTO fsm.state_machine_event (shard_id, state_machine_id, name, data)
+VALUES (1, :machine_id, 'search',  '{"query": "cats"}'),
+       (1, :machine_id, 'results', '{"count": 42}'),
+       (1, :machine_id, 'zoom',    '{}');
+```
+
+**Handling events yourself:** `fsm.handle_machine_events(shard, machine_id)` looks up whatever is still unhandled for a machine and processes it. Events sent the normal way are already handled by the time the insert returns, so this is for events inserted with the `notify_machine_event` trigger disabled — which have to set `handled_at` to null explicitly, since the column defaults to `now()`.
 
 ---
 
@@ -501,7 +506,8 @@ variously `shard`, `shard_id`, `shard_id_` and `shid`, and the machine is
 | `fsm.start_machine_with_latest_statechart(shard_id, named [, initial_data])` | Creates **and** starts a machine with the latest chart version. |
 | `fsm.get_latest_statechart(named)` | Returns the `fsm.statechart` row with the highest version for that name. |
 | `fsm.notify_state_machine(shard, machine, event [, data])` | Queues an event for the machine. `data` defaults to `'{}'`. |
-| `fsm.handle_machine_events(shard, machine_id)` | Processes all pending events in order, executes transitions and callbacks. |
+| `fsm.handle_machine_events(shard, machine_id, events)` | Handles the events it is given, in order, executing transitions and callbacks. This is what the `notify_machine_event` trigger calls. |
+| `fsm.handle_machine_events(shard, machine_id)` | Looks up whatever is still unhandled for the machine, marks it, and handles it. For events inserted with the trigger disabled. |
 | `fsm.is_state_active(shid, smid, state)` | Returns `true` if the machine is currently in the given state. |
 | `fsm.is_valid_transition(shard, machine_id, event_)` | Returns `true` if the event would trigger a transition from the current state. |
 | `fsm.get_initial_state(statechart)` | Returns the top-level initial state(s) of a statechart. |
