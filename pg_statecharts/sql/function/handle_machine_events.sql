@@ -302,11 +302,13 @@ $$
            and sm.id = handle_machine_events.machine_id
        )
     then
-      raise exception 'no state machine % exists in shard %'
+      raise exception 'state machine with id % and shard_id % does not exist'
           , handle_machine_events.machine_id, machine_shard
-        using detail = 'The machine has to exist before it can be used.'
-                       ' A machine created under a different shard_id has to'
-                       ' be addressed under that same shard_id.';
+        using detail = 'The id and the shard_id together identify a machine,'
+                       ' so a machine created under a different shard_id is'
+                       ' not found by this one. Pass the shard_id the machine'
+                       ' was created with, or omit the argument everywhere so'
+                       ' that every call uses the default of 1.';
     end if;
 
     with unhandled as (

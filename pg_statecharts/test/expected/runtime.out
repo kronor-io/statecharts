@@ -224,26 +224,36 @@ do $$
 declare
   from_start text;
   from_drain text;
+  detail_start text;
+  detail_drain text;
 begin
   begin
     perform fsm.start_machine(machine_id => 999999);
-  exception when raise_exception then from_start := sqlerrm;
+  exception when raise_exception then
+    get stacked diagnostics from_start = message_text, detail_start = pg_exception_detail;
   end;
 
   begin
     perform fsm.handle_machine_events(machine_id => 999999);
-  exception when raise_exception then from_drain := sqlerrm;
+  exception when raise_exception then
+    get stacked diagnostics from_drain = message_text, detail_drain = pg_exception_detail;
   end;
 
   if from_start is null or from_drain is null then
     raise exception 'both forms should have raised, got % and %', from_start, from_drain;
   end if;
-  if from_start <> from_drain then
-    raise exception 'the two forms report it differently: % vs %', from_start, from_drain;
+  -- Both halves, because the DETAIL is where the advice lives: start_machine
+  -- wraps everything it does in an exception handler that rewrites HINT, so
+  -- DETAIL is the only channel the two forms can share.
+  if from_start <> from_drain or detail_start <> detail_drain then
+    raise exception 'the two forms report it differently: % / % vs % / %'
+      , from_start, detail_start, from_drain, detail_drain;
   end if;
   raise notice 'both forms report it as: %', from_start;
+  raise notice 'with detail: %', detail_start;
 end $$;
-NOTICE:  both forms report it as: no state machine 999999 exists in shard 1
+NOTICE:  both forms report it as: state machine with id 999999 and shard_id 1 does not exist
+NOTICE:  with detail: The id and the shard_id together identify a machine, so a machine created under a different shard_id is not found by this one. Pass the shard_id the machine was created with, or omit the argument everywhere so that every call uses the default of 1.
 -- The names every argument carried before 0.2.0 still resolve, which is what
 -- lets a database be upgraded before the application that calls it is
 -- redeployed. Each of these is the pre-0.2.0 spelling of a call above.
