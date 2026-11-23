@@ -7,7 +7,8 @@ $$
     from fsm.state_machine_state 
     where state_machine_id = smid 
       and shard_id = shid
-      and state_id = state;
+      and state_id = state
+      and exited_at is null; -- the state is currently active
 
     if not found then
       return false;
