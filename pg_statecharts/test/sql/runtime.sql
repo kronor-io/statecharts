@@ -139,6 +139,33 @@ select fsm.handle_machine_events(machine_id => state_machine_id) from lightswitc
 select turned_off_at is not null as is_off_after_handling from lightswitch;
 alter table fsm.state_machine_event enable trigger notify_machine_event;
 
+-- Draining the queue of a machine that does not exist is indistinguishable
+-- from draining a machine with nothing pending, so the queue form raises too,
+-- and reports it exactly as fsm.start_machine does. One mistake, one message.
+do $$
+declare
+  from_start text;
+  from_drain text;
+begin
+  begin
+    perform fsm.start_machine(machine_id => 999999);
+  exception when raise_exception then from_start := sqlerrm;
+  end;
+
+  begin
+    perform fsm.handle_machine_events(machine_id => 999999);
+  exception when raise_exception then from_drain := sqlerrm;
+  end;
+
+  if from_start is null or from_drain is null then
+    raise exception 'both forms should have raised, got % and %', from_start, from_drain;
+  end if;
+  if from_start <> from_drain then
+    raise exception 'the two forms report it differently: % vs %', from_start, from_drain;
+  end if;
+  raise notice 'both forms report it as: %', from_start;
+end $$;
+
 -- The names every argument carried before 0.2.0 still resolve, which is what
 -- lets a database be upgraded before the application that calls it is
 -- redeployed. Each of these is the pre-0.2.0 spelling of a call above.

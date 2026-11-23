@@ -36,9 +36,9 @@ create or replace function fsm.start_machine(
       if start_machine.machine_id is not null and machine.id is null then
         raise exception 'no state machine % exists in shard %'
             , start_machine.machine_id, machine_shard
-          using detail = 'A machine has to be created before it can be started.'
+          using detail = 'The machine has to exist before it can be used.'
                          ' A machine created under a different shard_id has to'
-                         ' be started under that same shard_id.';
+                         ' be addressed under that same shard_id.';
       end if;
 
       for initial in select * from fsm.get_initial_state(statechart_id => machine.statechart_id)

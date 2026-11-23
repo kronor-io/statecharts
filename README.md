@@ -508,7 +508,7 @@ square brackets have defaults.
 | `fsm.get_latest_statechart(statechart_name)` | Returns the `fsm.statechart` row with the highest version for that name. |
 | `fsm.notify_state_machine(machine_id, event_name [, data] [, shard_id])` | Queues an event for the machine. `data` defaults to `'{}'`. |
 | `fsm.handle_machine_events(machine_id, events [, shard_id])` | Handles the events it is given, in order, executing transitions and callbacks. This is what the `notify_machine_event` trigger calls. |
-| `fsm.handle_machine_events(machine_id [, shard_id])` | Looks up whatever is still unhandled for the machine, marks it, and handles it. For events inserted with the trigger disabled. |
+| `fsm.handle_machine_events(machine_id [, shard_id])` | Looks up whatever is still unhandled for the machine, marks it, and handles it. For events inserted with the trigger disabled. Raises if no such machine exists under that shard. |
 | `fsm.is_state_active(machine_id, state_id [, shard_id])` | Returns `true` if the machine is currently in the given state. |
 | `fsm.is_valid_transition(machine_id, event_name [, shard_id])` | Returns `true` if the event would trigger a transition from the current state. |
 | `fsm.get_initial_state(statechart_id)` | Returns the top-level initial state(s) of a statechart. |

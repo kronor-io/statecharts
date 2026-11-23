@@ -284,6 +284,31 @@ $$
     machine_shard bigint := coalesce(shard, handle_machine_events.shard_id);
     events_ fsm.machine_event[];
   begin
+    -- The same check, and deliberately the same message, as fsm.start_machine.
+    -- Draining the queue of a machine that does not exist looks exactly like
+    -- the ordinary case of a machine with nothing pending, so without this it
+    -- is the one remaining way to address a missing machine and be told
+    -- nothing at all.
+    --
+    -- The form above does not carry it. The trigger only reaches that one with
+    -- machines the event table's foreign key has already vouched for, and the
+    -- lookup would be paid on every event rather than on this rarely used
+    -- path.
+    if handle_machine_events.machine_id is not null
+       and not exists (
+         select 1
+         from fsm.state_machine sm
+         where sm.shard_id = machine_shard
+           and sm.id = handle_machine_events.machine_id
+       )
+    then
+      raise exception 'no state machine % exists in shard %'
+          , handle_machine_events.machine_id, machine_shard
+        using detail = 'The machine has to exist before it can be used.'
+                       ' A machine created under a different shard_id has to'
+                       ' be addressed under that same shard_id.';
+    end if;
+
     with unhandled as (
         select *
         from fsm.state_machine_event e
