@@ -21,6 +21,12 @@ PSQL="psql -v ON_ERROR_STOP=1 -X -q"
 VERSION=$(sed -n "s/^default_version *= *'\([^']*\)'.*/\1/p" pg_statecharts/pg_statecharts.control)
 EXTDIR="$(pg_config --sharedir)/extension"
 
+# Under GitHub Actions the checkout is mounted into the job's container and is
+# not owned by the user the step runs as, which git refuses to read without
+# being told. Said per invocation rather than written into whoever runs this
+# locally.
+GIT="git -c safe.directory=$PWD"
+
 WORK=$(mktemp -d)
 INSTALLED=""
 cleanup() {
@@ -38,7 +44,7 @@ trap cleanup EXIT
 # longer builds. The route out of that era is the sqitch adoption, which
 # check_sqitch_adoption.sh covers and which ends up on the same upgrade path
 # from 0.0.0 onwards.
-OLD_VERSIONS=$(git tag --list 'v*' \
+OLD_VERSIONS=$($GIT tag --list 'v*' \
   | sed -n 's/^v\([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p' \
   | grep -vxF '0.0.0' \
   | grep -vxF "$VERSION" \
@@ -57,7 +63,7 @@ $PSQL -d upgrade_fresh -c "create extension pg_statecharts cascade"
 for old in $OLD_VERSIONS; do
   echo "--- building $old from its tag ---"
   mkdir -p "$WORK/$old"
-  git archive "v$old" pg_statecharts | tar -x -C "$WORK/$old"
+  $GIT archive "v$old" pg_statecharts | tar -x -C "$WORK/$old"
   make -C "$WORK/$old/pg_statecharts" >/dev/null
 
   # Only the install script. The control file and the upgrade scripts stay the
