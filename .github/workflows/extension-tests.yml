@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # pg_regress lives in the -dev package. The extensions themselves need
       # nothing to build, this is purely so the test harness is available.
@@ -101,7 +101,7 @@ jobs:
           apt-get -qq -y --no-install-recommends install git ca-certificates
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Whole history, for the same reason.
           fetch-depth: 0
@@ -174,7 +174,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install build tools
         run: |
@@ -211,7 +211,7 @@ jobs:
           cp pg_statecharts/pg_statecharts-*.zip pg_statecharts_dev/pg_statecharts_dev-*.zip dist/
 
       - name: Pass the archives on to the install job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pgxn-archives
           path: dist/*
@@ -230,7 +230,7 @@ jobs:
 
     steps:
       - name: Download the archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pgxn-archives
           path: /archives
