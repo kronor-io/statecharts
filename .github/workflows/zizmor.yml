@@ -1,0 +1,56 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - master
+
+name: Workflow Analysis
+
+# zizmor reads the files in this directory and reports the ways a workflow can
+# be turned against the repository: an action reference that can move under us,
+# a token left behind in the checkout for a later step to pick up, a ${{ }}
+# expansion that reaches a shell. All of that is a property of the workflow
+# text, so the pull request that changes a workflow is where it is cheapest to
+# hear about it -- long before the release that depends on it runs.
+
+# Nothing by default. The job below asks for exactly what it needs.
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    permissions:
+      # The action hands its results to github/codeql-action/upload-sarif,
+      # which files them as code scanning alerts. Free for us because the
+      # repository is public.
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # zizmor reads files and talks to the API with the token below; it
+          # never runs git. Leaving the checkout credential in .git/config
+          # would be zizmor's own `artipacked` finding, so take the advice
+          # here rather than collect the report.
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@v0.9.2
+        # Defaults otherwise: every audit, the online ones included, using the
+        # job's token to look up the actions we reference.
+        #
+        # Note that a green check here does NOT mean zizmor found nothing. The
+        # action asks for SARIF output, and in that mode zizmor deliberately
+        # stops using its "findings were found" exit codes, because a SARIF
+        # consumer expects the results in the SARIF rather than in the process
+        # status. The findings are in the Security tab and on the diff of the
+        # pull request that introduced them. To have findings fail the job
+        # instead, set `advanced-security: false` with `annotations: true`.
