@@ -27,7 +27,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # pg_regress lives in the -dev package. The extensions themselves need
       # nothing to build, this is purely so the test harness is available.
@@ -101,10 +103,11 @@ jobs:
           apt-get -qq -y --no-install-recommends install git ca-certificates
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Whole history, for the same reason.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install build tools
         run: |
@@ -174,7 +177,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install build tools
         run: |
@@ -211,7 +216,7 @@ jobs:
           cp pg_statecharts/pg_statecharts-*.zip pg_statecharts_dev/pg_statecharts_dev-*.zip dist/
 
       - name: Pass the archives on to the install job
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pgxn-archives
           path: dist/*
@@ -230,7 +235,7 @@ jobs:
 
     steps:
       - name: Download the archives
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: pgxn-archives
           path: /archives

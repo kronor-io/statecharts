@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # zizmor reads files and talks to the API with the token below; it
           # never runs git. Leaving the checkout credential in .git/config
@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@v0.9.2
+        uses: zizmorcore/zizmor-action@1b4550e929643b8b26a62303c6bd64814271a4f1 # v0.9.2
         # Defaults otherwise: every audit, the online ones included, using the
         # job's token to look up the actions we reference.
         #
