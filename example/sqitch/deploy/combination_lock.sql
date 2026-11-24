@@ -22,8 +22,7 @@ BEGIN;
           then
               select s.id into new.state_machine_id
               from fsm.create_state_machine_with_latest_statechart(
-                  shard_id_ => 1,
-                  named => 'combination_lock_flow'
+                  statechart_name => 'combination_lock_flow'
               ) s;
           end if;
           return new;
@@ -45,7 +44,6 @@ BEGIN;
       begin
 
           perform fsm.start_machine(
-              shard => 1,
               machine_id => new.state_machine_id
           )
           from combination_lock
@@ -82,10 +80,13 @@ BEGIN;
           where
             state_machine_id = (event_payload).machine_id;
 
+          -- shard_id defaults to 1 and the examples leave it out, but here the
+          -- machine's own shard arrives in the payload, so pass it back rather
+          -- than assuming the default.
           perform fsm.notify_state_machine(
-            shard => (event_payload).shard_id,
-            machine => (event_payload).machine_id,
-            event => 'combination_lock.reset'
+            machine_id => (event_payload).machine_id,
+            event_name => 'combination_lock.reset',
+            shard_id   => (event_payload).shard_id
           );
       end
   $$ language plpgsql;

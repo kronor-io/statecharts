@@ -29,9 +29,9 @@ $$
         group by inserted.shard_id, inserted.state_machine_id
     loop
       perform fsm.handle_machine_events(
-          machine_.shard_id
-        , machine_.state_machine_id
-        , machine_.events
+          machine_id => machine_.state_machine_id
+        , events     => machine_.events
+        , shard_id   => machine_.shard_id
       );
     end loop;
 
