@@ -1,0 +1,70 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - master
+
+name: Workflow Analysis
+
+# zizmor reads the files in this directory and reports the ways a workflow can
+# be turned against the repository: an action reference that can move under us,
+# a token left behind in the checkout for a later step to pick up, a ${{ }}
+# expansion that reaches a shell. All of that is a property of the workflow
+# text, so the pull request that changes a workflow is where it is cheapest to
+# hear about it -- long before the release that depends on it runs.
+
+# Nothing by default. The job below asks for exactly what it needs.
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    permissions:
+      # Only the checkout. Reporting is this job's own exit status now, so
+      # nothing here writes anywhere.
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # zizmor reads files and talks to the API with the token below; it
+          # never runs git. Leaving the checkout credential in .git/config
+          # would be zizmor's own `artipacked` finding, so take the advice
+          # here rather than collect the report.
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@1b4550e929643b8b26a62303c6bd64814271a4f1 # v0.9.2
+        with:
+          # A finding fails this job. The repository is clean today, so the
+          # gate costs nothing to hold and the next workflow change is the
+          # cheapest moment to hear about a regression.
+          #
+          # The two output modes are mutually exclusive: SARIF would file the
+          # findings in the Security tab, but in SARIF mode zizmor stops using
+          # its "findings were found" exit codes, because a SARIF consumer
+          # expects results in the SARIF rather than in the process status.
+          # Blocking therefore means annotations, which land on the diff and
+          # in the log. To go back to reporting without blocking, swap these
+          # two values.
+          advanced-security: false
+          annotations: true
+
+          # Exact, not `latest`. A gate that moves on its own turns an
+          # unrelated pull request red for a reason nobody in it changed:
+          # new zizmor releases add audits. Bumping this is then an ordinary
+          # reviewed change, like any other pinned version here.
+          version: 1.33.1
+
+          # Everything else stays default: every audit, the online ones
+          # included, using the job's token to look up the actions we
+          # reference, and the default severity and confidence thresholds.
+          # The repository passes those as they are, so there is nothing to
+          # calibrate yet.
