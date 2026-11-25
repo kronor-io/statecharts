@@ -2,6 +2,8 @@
 
 A statechart interpreter built entirely inside PostgreSQL. Define hierarchical state machines as data, send events, and let the database execute transitions — including `on_entry`/`on_exit` callbacks, composite states, parallel regions, and automatic "done" events.
 
+Statecharts is one of the PostgreSQL tools Kronor uses together with [sqiff](https://github.com/kronor-io/sqiff), [sqint](https://github.com/kronor-io/sqint) and [hasql-check](https://github.com/kronor-io/hasql-check). [sqitchcraft](https://kronor-io.github.io/sqitchcraft/) shows how they fit together, and where state machines fit in the design of a database whose schema lives in sqitch.
+
 ---
 
 ## Table of Contents
