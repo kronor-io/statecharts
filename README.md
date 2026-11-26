@@ -11,6 +11,7 @@ Statecharts is one of the PostgreSQL tools Kronor uses together with [sqiff](htt
 - [What are Statecharts?](#what-are-statecharts)
 - [Why run Statecharts in the database?](#why-run-statecharts-in-the-database)
 - [Prerequisites](#prerequisites)
+  - [Transaction isolation](#transaction-isolation)
 - [Installation](#installation)
 - [Database Schema Overview](#database-schema-overview)
 - [Usage Guide](#usage-guide)
@@ -66,6 +67,41 @@ Events drive transitions; the machine is always in exactly one active state (or 
 | [`ltree`](https://www.postgresql.org/docs/current/ltree.html) extension | Ships with PostgreSQL. The extension needs it in `public`; see [pg_statecharts](pg_statecharts/README.md#installing). |
 | [`semver`](https://pgxn.org/dist/semver/) extension | Only for the sqitch path; the extension needs no compiler and no `semver` |
 | [sqitch](https://sqitch.org) | Change-management tool used to deploy migrations |
+| `REPEATABLE READ` or `SERIALIZABLE` | The isolation level of every transaction that sends events. See [Transaction isolation](#transaction-isolation). |
+
+### Transaction isolation
+
+Send events only from transactions running at `REPEATABLE READ` or
+`SERIALIZABLE`. `READ COMMITTED`, PostgreSQL's default, is not enough.
+
+The engine reads a machine's active states, then exits and enters states and
+runs callbacks. It takes no lock of its own first. Under `READ COMMITTED`, two
+transactions that send events to the same machine at the same time both start
+from the states it was in before either committed. Take a machine in a compound
+state `open`, with `pay` leading to the final state `paid` and `void` to the
+final state `voided`, and send `pay` and `void` from two sessions at once: the
+machine ends up in `paid` and `voided` together, and the `on_entry` callbacks
+of both have run.
+
+At `REPEATABLE READ` or above, the second transaction fails instead:
+
+```
+ERROR:  could not serialize access due to concurrent update
+```
+
+That is SQLSTATE `40001`. Retry the whole transaction: the retry starts from
+the state the first transaction committed, and handles the event from there,
+or drops it if it no longer applies. A client that retries `40001` already
+does the right thing.
+
+Set the level for the role your application connects as, so no transaction
+can forget it:
+
+```sql
+alter role app set default_transaction_isolation = 'serializable';
+```
+
+At Kronor every transaction that touches a statechart runs at `SERIALIZABLE`.
 
 ---
 

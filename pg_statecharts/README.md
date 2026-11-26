@@ -11,6 +11,12 @@ extension,
 so that nothing able to read and write files on the database host has to be
 installed on a production server.
 
+Send events only from transactions running at `REPEATABLE READ` or
+`SERIALIZABLE`, and retry those that fail with SQLSTATE `40001`. Under
+`READ COMMITTED`, two concurrent events for one machine can leave it in two
+states at once. See
+[Transaction isolation](https://github.com/kronor-io/statecharts#transaction-isolation).
+
 ## Installing
 
 The extension is pure SQL. There is nothing to compile, so one set of files
