@@ -68,6 +68,12 @@ $(DIST): all META.json
 REGRESS = semver runtime
 REGRESS_OPTS = --inputdir=test --outputdir=test
 
+# The concurrency the engine has to get right needs two connections talking to
+# one machine at once, which pg_regress cannot express: it runs one session.
+# pg_isolation_regress ships with the same -dev package pg_regress does.
+ISOLATION = concurrency
+ISOLATION_OPTS = --inputdir=test --outputdir=test
+
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)

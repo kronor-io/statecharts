@@ -2,16 +2,16 @@
    "name": "pg_statecharts_dev",
    "abstract": "Development tooling for pg_statecharts: import .scxml files and generate sqitch migrations",
    "description": "Turns .scxml files into statecharts in the database, either directly or as sqitch migrations. Both of its functions read files from the database host and one of them writes files too, which is why this is a separate extension from pg_statecharts: install it on development machines, not on production servers. Implemented entirely in SQL and PL/pgSQL, so there is nothing to compile and one set of files works on every PostgreSQL version, architecture and operating system.",
-   "version": "0.2.0",
+   "version": "0.2.1",
    "maintainer": [
       "Kronor <dev@kronor.io>"
    ],
    "license": "mit",
    "provides": {
       "pg_statecharts_dev": {
-         "file": "pg_statecharts_dev--0.2.0.sql",
+         "file": "pg_statecharts_dev--0.2.1.sql",
          "docfile": "README.md",
-         "version": "0.2.0",
+         "version": "0.2.1",
          "abstract": "Development tooling for pg_statecharts: import .scxml files and generate sqitch migrations"
       }
    },

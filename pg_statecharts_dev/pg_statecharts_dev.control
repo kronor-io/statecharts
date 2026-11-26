@@ -1,5 +1,5 @@
 comment = 'Development tooling for pg_statecharts: import .scxml files and generate sqitch migrations'
-default_version = '0.2.0'
+default_version = '0.2.1'
 relocatable = false
 superuser = false
 trusted = false

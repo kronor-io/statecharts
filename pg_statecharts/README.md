@@ -13,8 +13,10 @@ installed on a production server.
 
 Send events only from transactions running at `REPEATABLE READ` or
 `SERIALIZABLE`, and retry those that fail with SQLSTATE `40001`. Under
-`READ COMMITTED`, two concurrent events for one machine can leave it in two
-states at once. See
+`READ COMMITTED`, two concurrent events for one machine raced, and up to 0.2.0
+could leave it in two states at once. Since 0.2.1 the transaction that loses
+that race raises `40001` rather than applying a transition the machine has
+moved past, but that is a backstop and not a reason to run at it. See
 [Transaction isolation](https://github.com/kronor-io/statecharts#transaction-isolation).
 
 ## Installing
@@ -386,3 +388,8 @@ rewriting it.
 make install
 make installcheck          # needs a server you can connect to
 ```
+
+`installcheck` runs the `pg_regress` suites in `test/sql` and then the
+`pg_isolation_regress` spec in `test/specs`, which drives two connections at
+one machine to check that concurrent events are serialised. Both harnesses
+ship with the `postgresql-server-dev` package for your PostgreSQL major.
