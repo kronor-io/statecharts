@@ -23,8 +23,9 @@
 -- states exited underneath it -- but it is not a proof that nothing else can.
 --
 -- fsm.trig_notify_machine_event also walks the machines of a multi-machine
--- insert in a deterministic order now, so that two such statements cannot take
--- the row locks on fsm.state_machine_state in opposite orders and deadlock.
+-- insert in a deterministic order now, so that two such statements cannot
+-- write fsm.state_machine_state for the same machines in opposite orders and
+-- deadlock on each other.
 --
 -- Only function bodies change. No signature, table, type or trigger is
 -- touched, so there is nothing to drop and nothing a database mid-flight
@@ -476,16 +477,19 @@ $$
             ) as events
         from new as inserted
         group by inserted.shard_id, inserted.state_machine_id
-        -- Deterministic on purpose. Each iteration exits and enters states
-        -- for its machine, and the row locks that takes on
-        -- fsm.state_machine_state are held until the transaction ends. Two
-        -- statements inserting events for the same machines in different
-        -- orders would otherwise be able to acquire those in opposite orders
-        -- and deadlock each other. Ordering here settles it for a single
-        -- statement; callbacks that send events on to further machines still
-        -- pick their own order, and a deadlock between those is detected and
-        -- reported as 40P01. Within one machine the events are already
-        -- ordered by the array_agg above.
+        -- Deterministic on purpose. Each iteration writes its machine's rows
+        -- in fsm.state_machine_state: exited_at stamped on the states it
+        -- leaves, a row inserted for each state it enters. Nothing here takes
+        -- a lock of its own, but both of those block a second transaction
+        -- doing the same to that machine until this one commits -- an updated
+        -- row holds its lock, and idx_state makes a duplicate active state
+        -- wait on whoever inserted first. So two statements inserting events
+        -- for the same machines in different orders would be able to block
+        -- each other in opposite orders and deadlock. Ordering here settles
+        -- it for a single statement; callbacks that send events on to further
+        -- machines still pick their own order, and a deadlock between those
+        -- is detected and reported as 40P01. Within one machine the events
+        -- are already ordered by the array_agg above.
         order by inserted.shard_id, inserted.state_machine_id
     loop
       perform fsm.handle_machine_events(
