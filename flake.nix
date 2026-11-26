@@ -6,10 +6,10 @@
   };
   inputs = {
     git-hooks.url = "github:cachix/git-hooks.nix";
-    haskell-nix.url = "github:kronor-io/haskell.nix/wip-nixpkgs-ghc";
+    haskell-nix.url = "github:kronor-io/haskell.nix/nixpkgs-ghc-601a4d19";
     haskell-nix.inputs.hackage.follows = "hackage-nix";
     haskell-nix.inputs.nixpkgs.follows = "nixpkgs";
-    nixpkgs.url = "github:NixOS/nixpkgs/release-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/release-26.05";
     hackage-nix.url = "github:kronor-io/hackage.nix";
     hackage-nix.flake = false;
   };
@@ -119,7 +119,7 @@
             inherit system;
           }
         );
-        compiler-nix-name = "ghc9122";
+        compiler-nix-name = "ghc9124";
 
         statechartProject = pkgs.haskell-nix.project {
           src = ./sdk;
