@@ -1,0 +1,100 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_read_committed s2_read_committed s1_pay s2_void s1_commit s2_commit active entered
+step s1_read_committed: begin transaction isolation level read committed;
+step s2_read_committed: begin transaction isolation level read committed;
+step s1_pay: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.pay');
+notify_state_machine
+--------------------
+                    
+(1 row)
+
+step s2_void: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.void'); <waiting ...>
+step s1_commit: commit;
+step s2_void: <... completed>
+ERROR:  expected to exit 1 state(s) of machine 1 in shard 1 handling invoice.void, but only 0 of them were still active
+step s2_commit: commit;
+step active: 
+  select s.state_id
+  from fsm.state_machine_state s
+  where s.exited_at is null
+  order by s.state_id;
+
+state_id
+--------
+paid    
+(1 row)
+
+step entered: select state_id from invoice_entered order by state_id;
+state_id
+--------
+paid    
+(1 row)
+
+
+starting permutation: s1_repeatable_read s2_repeatable_read s1_pay s2_void s1_commit s2_commit active entered
+step s1_repeatable_read: begin transaction isolation level repeatable read;
+step s2_repeatable_read: begin transaction isolation level repeatable read;
+step s1_pay: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.pay');
+notify_state_machine
+--------------------
+                    
+(1 row)
+
+step s2_void: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.void'); <waiting ...>
+step s1_commit: commit;
+step s2_void: <... completed>
+ERROR:  could not serialize access due to concurrent update
+step s2_commit: commit;
+step active: 
+  select s.state_id
+  from fsm.state_machine_state s
+  where s.exited_at is null
+  order by s.state_id;
+
+state_id
+--------
+paid    
+(1 row)
+
+step entered: select state_id from invoice_entered order by state_id;
+state_id
+--------
+paid    
+(1 row)
+
+
+starting permutation: s1_read_committed s1_pay s1_commit s2_read_committed s2_void s2_commit active entered
+step s1_read_committed: begin transaction isolation level read committed;
+step s1_pay: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.pay');
+notify_state_machine
+--------------------
+                    
+(1 row)
+
+step s1_commit: commit;
+step s2_read_committed: begin transaction isolation level read committed;
+step s2_void: select fsm.notify_state_machine(machine_id => (select machine_id from invoice), event_name => 'invoice.void');
+notify_state_machine
+--------------------
+                    
+(1 row)
+
+step s2_commit: commit;
+step active: 
+  select s.state_id
+  from fsm.state_machine_state s
+  where s.exited_at is null
+  order by s.state_id;
+
+state_id
+--------
+paid    
+(1 row)
+
+step entered: select state_id from invoice_entered order by state_id;
+state_id
+--------
+paid    
+(1 row)
+

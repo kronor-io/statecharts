@@ -33,6 +33,10 @@ $$
     state_transition record;
     on_exit_function_call record;
     on_entry_function_call record;
+    -- How many states the transition below says to exit, and how many the
+    -- update actually found still active. See the check that compares them.
+    expected_exits bigint;
+    actual_exits bigint;
   begin
 
     -- For each event, select the set of source active states and future target
@@ -132,36 +136,98 @@ $$
         -- For all the active source states, we mark them as exited and execute their respective
         -- on_exit callback if any
         -- {{{source-exiting
+        -- Mark the source states exited. This used to be a CTE of the loop
+        -- below; it is a statement of its own because how many rows it
+        -- updates is what the check after it reads.
+        with
+          target_states as (
+            select *
+            from
+              unnest(state_transition.target_state || state_transition.children_target_states)
+          )
+
+        , source_states as (
+            select *
+            from
+              unnest(state_transition.children_source_states || state_transition.source_state)
+          )
+
+        , expected as (
+            -- Every state in source_states was active when the transition
+            -- query read it: the source is the row that query matched on
+            -- exited_at is null, and the children came from a join filtered
+            -- the same way. So each one that is not also a target has to
+            -- still be active now, and the update has to find all of them.
+            select count(distinct a.id) as n
+            from source_states a
+            -- if we are looping into the same state, we don't want to mark the current state as exited
+            where a.id not in (select x.id from target_states x)
+          )
+
+        , updated as (
+            update fsm.state_machine_state sms
+            /* using clock_timestamp() instead of now(). now() uses
+             * transaction time which can cause problem when another process
+             * adds fsm.state_machine_state rows during the transaction. This
+             * can cause the exited_at time to be earlier than the entered
+             * time causing a constraint errors
+             */
+            set exited_at = clock_timestamp()
+            where sms.shard_id = machine_shard
+              and sms.state_machine_id = machine_id
+              and sms.state_id in (select a.id from source_states a)
+              and sms.state_id not in (select a.id from target_states a)
+              and sms.exited_at is null
+            returning 1
+          )
+
+        select (select n from expected), (select count(*) from updated)
+        into expected_exits, actual_exits;
+
+        -- This is what makes a concurrent divergence loud rather than silent.
+        --
+        -- Handling reads the machine's active states and then acts on what it
+        -- read, and nothing holds those two together. Under read committed,
+        -- PostgreSQL's default, two transactions sending events to the same
+        -- machine at once both read the configuration as it was before either
+        -- committed. Without this check the one that loses the race applies a
+        -- transition the machine has already moved past: a machine with one
+        -- transition to a final `paid` and another to a final `voided` ends up
+        -- in `paid` and `voided` together, both final, with both on_entry
+        -- callbacks run. With it, the loser finds the states it meant to exit
+        -- already exited, and raises.
+        --
+        -- A backstop, not a substitute for the isolation level. It catches the
+        -- way this goes wrong in practice -- the losing transaction's source
+        -- states exited underneath it -- but it is not a proof that nothing
+        -- else can. Send events at repeatable read or serializable; see the
+        -- README.
+        --
+        -- Raised as 40001 rather than as a code of its own so that a client
+        -- which already retries serialization failures -- which the README
+        -- asks for, and which repeatable read and serializable need from it
+        -- anyway -- recovers from this without being taught anything new.
+        if actual_exits <> expected_exits then
+          raise exception
+              'expected to exit % state(s) of machine % in shard % handling %, but only % of them were still active'
+            , expected_exits
+            , handle_machine_events.machine_id
+            , machine_shard
+            , handled.name
+            , actual_exits
+            using errcode = '40001'
+                , detail  = 'Another transaction exited them in between this one'
+                            ' reading the machine''s active states and acting on'
+                            ' what it read.'
+                , hint    = 'Retry the transaction.';
+        end if;
+
         for on_exit_function_call in
           with
-
-            target_states as (
-              select *
-              from
-                unnest(state_transition.target_state || state_transition.children_target_states)
-            )
-
-          , source_states as (
+            source_states as (
               select *
               from
                 unnest(state_transition.children_source_states || state_transition.source_state)
-            )
-
-          , updated_states as (
-              update fsm.state_machine_state sms
-              /* using clock_timestamp() instead of now(). now() uses
-               * transaction time which can cause problem when another process
-               * adds fsm.state_machine_state rows during the transaction. This
-               * can cause the exited_at time to be earlier than the entered
-               * time causing a constraint errors
-               */
-              set exited_at = clock_timestamp()
-              where sms.shard_id = machine_shard
-                and sms.state_machine_id = machine_id
-                and sms.state_id in (select a.id from source_states a)
-                -- if we are looping into the same state, we don't want to mark the current state as exited
-                and sms.state_id not in (select a.id from target_states a)
-                and sms.exited_at is null
             )
 
           select machine_shard, machine_id, machine_id, id, unnest(on_exit) as on_exit from source_states

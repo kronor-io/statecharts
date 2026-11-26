@@ -27,6 +27,17 @@ $$
             ) as events
         from new as inserted
         group by inserted.shard_id, inserted.state_machine_id
+        -- Deterministic on purpose. Each iteration exits and enters states
+        -- for its machine, and the row locks that takes on
+        -- fsm.state_machine_state are held until the transaction ends. Two
+        -- statements inserting events for the same machines in different
+        -- orders would otherwise be able to acquire those in opposite orders
+        -- and deadlock each other. Ordering here settles it for a single
+        -- statement; callbacks that send events on to further machines still
+        -- pick their own order, and a deadlock between those is detected and
+        -- reported as 40P01. Within one machine the events are already
+        -- ordered by the array_agg above.
+        order by inserted.shard_id, inserted.state_machine_id
     loop
       perform fsm.handle_machine_events(
           machine_id => machine_.state_machine_id

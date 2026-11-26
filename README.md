@@ -77,22 +77,39 @@ Send events only from transactions running at `REPEATABLE READ` or
 The engine reads a machine's active states, then exits and enters states and
 runs callbacks. It takes no lock of its own first. Under `READ COMMITTED`, two
 transactions that send events to the same machine at the same time both start
-from the states it was in before either committed. Take a machine in a compound
-state `open`, with `pay` leading to the final state `paid` and `void` to the
-final state `voided`, and send `pay` and `void` from two sessions at once: the
-machine ends up in `paid` and `voided` together, and the `on_entry` callbacks
-of both have run.
+from the states it was in before either committed. Take a machine in state
+`open`, with `pay` leading to the final state `paid` and `void` to the final
+state `voided`, and send `pay` and `void` from two sessions at once: up to
+0.2.0 the machine ended up in `paid` and `voided` together, and the `on_entry`
+callbacks of both had run.
 
-At `REPEATABLE READ` or above, the second transaction fails instead:
+Since 0.2.1 the transaction that loses that race is caught rather than quietly
+applied. Exiting the source states checks that every state the transition
+named was still active, and raises when one of them was not:
+
+```
+ERROR:  expected to exit 1 state(s) of machine 1 in shard 1 handling invoice.void, but only 0 of them were still active
+DETAIL:  Another transaction exited them in between this one reading the
+         machine's active states and acting on what it read.
+HINT:  Retry the transaction.
+```
+
+That is a backstop, not a substitute for the isolation level. It catches the
+way this goes wrong in practice — the losing transaction's source states
+exited underneath it — but it is not a proof that nothing else can, and it is
+in the extension only, not in the sqitch path under `deploy/`.
+
+At `REPEATABLE READ` or above the question does not arise: PostgreSQL refuses
+the write before any of that, and the second transaction fails with
 
 ```
 ERROR:  could not serialize access due to concurrent update
 ```
 
-That is SQLSTATE `40001`. Retry the whole transaction: the retry starts from
-the state the first transaction committed, and handles the event from there,
-or drops it if it no longer applies. A client that retries `40001` already
-does the right thing.
+Both errors are SQLSTATE `40001`, deliberately, so one retry path covers them.
+Retry the whole transaction: the retry starts from the state the first
+transaction committed, and handles the event from there, or drops it if it no
+longer applies. A client that retries `40001` already does the right thing.
 
 Set the level for the role your application connects as, so no transaction
 can forget it:
@@ -102,6 +119,9 @@ alter role app set default_transaction_isolation = 'serializable';
 ```
 
 At Kronor every transaction that touches a statechart runs at `SERIALIZABLE`.
+
+`pg_statecharts/test/specs/concurrency.spec` runs this case at both
+`READ COMMITTED` and `REPEATABLE READ`.
 
 ---
 
